@@ -73,7 +73,7 @@ const GeneratingFields = () => {
               onClick={() => removeField(field, setFieldFn, currentFields)}
               style={styles.removeButton}
             >
-              x
+              X
             </button>
           </div>
         ))}
@@ -106,7 +106,7 @@ const GeneratingFields = () => {
     return { pivotData, grandTotal };
   };
 
-  const renderPivotTable = (aggregatedData) => {
+  const renderPivotTable = (aggregatedData, rowFields) => {
     const { pivotData, grandTotal } = aggregatedData;
     const rowKeys = Object.keys(pivotData);
     const colKeys = [
@@ -117,7 +117,9 @@ const GeneratingFields = () => {
       <table style={styles.pivotTable}>
         <thead>
           <tr>
-            <th style={styles.tableHeader}></th>
+            <th style={styles.tableHeader}>
+              {rowFields.length > 0 ? rowFields.join(' | ') : ''}
+            </th>
             {colKeys.map((col) => (
               <th key={col} style={styles.tableHeader}>
                 {col}
@@ -167,7 +169,8 @@ const GeneratingFields = () => {
         <h2 style={styles.pivotTablePlaceholder}>PIVOT TABLE</h2>
         {showTable ? (
           renderPivotTable(
-            aggregateData(structuredData, rowFields, columnFields, valueFields)
+            aggregateData(structuredData, rowFields, columnFields, valueFields),
+            rowFields
           )
         ) : (
           <div style={styles.placeholderMessage}>
