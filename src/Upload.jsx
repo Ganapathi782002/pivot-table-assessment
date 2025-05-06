@@ -3,10 +3,12 @@ import { ToastContainer, toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
 import 'react-toastify/dist/ReactToastify.css';
 import { useNavigate } from 'react-router-dom';
+import GeneratingFields from './GeneratingFields';
 
 const UploadFile = () => {
   const [file, setFile] = useState(null);
   const [previewData, setPreviewData] = useState([]);
+  const [fullData, setFullData] = useState([]);
   const navigate = useNavigate();
 
   const handleFileChange = (e) => {
@@ -43,6 +45,7 @@ const UploadFile = () => {
 
       const firstFiveRows = jsonData.slice(0, 6);
       setPreviewData(firstFiveRows);
+      setFullData(jsonData)
     };
 
     reader.readAsArrayBuffer(selectedFile);
@@ -50,7 +53,7 @@ const UploadFile = () => {
 
   const handleButtonClick = () => {
     // Correct navigation to the new page without .js extension
-    navigate('/crafting-pivot-table');
+    navigate('/GeneratingFields',{ state: { fullData } });
   };
 
   return (
