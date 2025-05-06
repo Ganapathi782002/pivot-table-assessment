@@ -11,6 +11,7 @@ const GeneratingFields = () => {
   const [selectedRow, setSelectedRow] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("");
   const [selectedValue, setSelectedValue] = useState("");
+  const [aggregationType, setAggregationType] = useState("Sum");
 
   if (!fullData || fullData.length < 2) {
     return <div>No data received</div>;
@@ -106,19 +107,18 @@ const GeneratingFields = () => {
     return { pivotData, grandTotal };
   };
 
-  
-
   const aggregateHierarchicalData = (
     data,
     rowFields,
     columnFields,
-    valueFields
+    valueFields,
+    aggregationType
   ) => {
     const pivotTree = {};
     const colSet = new Set();
     let grandTotal = 0;
     const colTotals = {};
-
+    const counts = {};
     data.forEach((row) => {
       const rowKeys = rowFields.map((field) => row[field]);
       const colKey = columnFields.map((field) => row[field]).join(" | ");
@@ -129,20 +129,66 @@ const GeneratingFields = () => {
         if (!pointer[key])
           pointer[key] = { __sub__: {}, __total__: 0, __cols__: {} };
         if (idx === rowKeys.length - 1) {
-          let rowTotal = 0;
           valueFields.forEach((field) => {
-            const val = parseFloat(row[field]) || 0;
-            rowTotal += val;
-            pointer[key].__cols__[colKey] =
-              (pointer[key].__cols__[colKey] || 0) + val;
-            colTotals[colKey] = (colTotals[colKey] || 0) + val;
+            const rawVal = row[field];
+            const val = parseFloat(rawVal) || 0;
+            const countKey = rowKeys.join(" | ") + "||" + colKey;
+  
+            if (aggregationType === "Count") {
+              pointer[key].__cols__[colKey] =
+                (pointer[key].__cols__[colKey] || 0) + 1;
+              colTotals[colKey] = (colTotals[colKey] || 0) + 1;
+              pointer[key].__total__ += 1;
+              grandTotal += 1;
+            } else {
+              pointer[key].__cols__[colKey] =
+                (pointer[key].__cols__[colKey] || 0) + val;
+              colTotals[colKey] = (colTotals[colKey] || 0) + val;
+              pointer[key].__total__ += val;
+              grandTotal += val;
+  
+              if (aggregationType === "Average") {
+                counts[countKey] = (counts[countKey] || 0) + 1;
+              }
+            }
           });
-          pointer[key].__total__ += rowTotal;
-          grandTotal += rowTotal;
         }
-        pointer = pointer[key].__sub__;
+        pointer = pointer[key].__sub__
       });
     });
+
+    if (aggregationType === "Average") {
+      Object.entries(pivotTree).forEach(function applyAverage([label, node]) {
+        const applyToNode = (node, rowPrefix) => {
+          Object.entries(node.__cols__).forEach(([col, sum]) => {
+            const countKey = rowPrefix + "||" + col;
+            const count = counts[countKey] || 1;
+            node.__cols__[col] = sum / count;
+          });
+  
+          Object.values(node.__sub__).forEach((sub, idx) => {
+            applyToNode(sub, rowPrefix + " | " + Object.keys(node.__sub__)[idx]);
+          });
+        };
+  
+        applyToNode(node, label);
+      });
+  
+      // Average totals
+      Object.keys(colTotals).forEach((col) => {
+        let total = 0;
+        let count = 0;
+        Object.entries(counts).forEach(([key, c]) => {
+          if (key.endsWith("||" + col)) {
+            total += colTotals[col];
+            count += c;
+          }
+        });
+        colTotals[col] = count ? colTotals[col] / count : 0;
+      });
+  
+      grandTotal = Object.values(colTotals).reduce((a, b) => a + b, 0);
+    }
 
     return {
       pivotTree,
@@ -274,7 +320,8 @@ const GeneratingFields = () => {
               structuredData,
               rowFields,
               columnFields,
-              valueFields
+              valueFields,
+              aggregationType
             );
             return renderHierarchicalPivotTable(aggregated, rowFields);
           })()
@@ -315,6 +362,18 @@ const GeneratingFields = () => {
           setValueFields,
           valueFields
         )}
+      </div>
+      <div style={styles.dropdownSection}>
+        <label style={styles.label}>Aggregate values using</label>
+        <select
+          style={styles.select}
+          value={aggregationType}
+          onChange={(e) => setAggregationType(e.target.value)}
+        >
+          <option value="Sum">Sum</option>
+          <option value="Average">Average</option>
+          <option value="Count">Count</option>
+        </select>
       </div>
     </div>
   );
