@@ -106,19 +106,114 @@ const GeneratingFields = () => {
     return { pivotData, grandTotal };
   };
 
-  const renderPivotTable = (aggregatedData, rowFields) => {
-    const { pivotData, grandTotal } = aggregatedData;
-    const rowKeys = Object.keys(pivotData);
-    const colKeys = [
-      ...new Set(rowKeys.flatMap((row) => Object.keys(pivotData[row]))),
-    ];
+  
+
+  const aggregateHierarchicalData = (
+    data,
+    rowFields,
+    columnFields,
+    valueFields
+  ) => {
+    const pivotTree = {};
+    const colSet = new Set();
+    let grandTotal = 0;
+    const colTotals = {};
+
+    data.forEach((row) => {
+      const rowKeys = rowFields.map((field) => row[field]);
+      const colKey = columnFields.map((field) => row[field]).join(" | ");
+      colSet.add(colKey);
+
+      let pointer = pivotTree;
+      rowKeys.forEach((key, idx) => {
+        if (!pointer[key])
+          pointer[key] = { __sub__: {}, __total__: 0, __cols__: {} };
+        if (idx === rowKeys.length - 1) {
+          let rowTotal = 0;
+          valueFields.forEach((field) => {
+            const val = parseFloat(row[field]) || 0;
+            rowTotal += val;
+            pointer[key].__cols__[colKey] =
+              (pointer[key].__cols__[colKey] || 0) + val;
+            colTotals[colKey] = (colTotals[colKey] || 0) + val;
+          });
+          pointer[key].__total__ += rowTotal;
+          grandTotal += rowTotal;
+        }
+        pointer = pointer[key].__sub__;
+      });
+    });
+
+    return {
+      pivotTree,
+      colKeys: Array.from(colSet),
+      colTotals,
+      grandTotal,
+    };
+  };
+
+  // const renderPivotTable = (aggregatedData, rowFields) => {
+  //   const { pivotData, grandTotal } = aggregatedData;
+  //   const rowKeys = Object.keys(pivotData);
+  //   const colKeys = [
+  //     ...new Set(rowKeys.flatMap((row) => Object.keys(pivotData[row]))),
+  //   ];
+
+  //   return (
+  //     <table style={styles.pivotTable}>
+  //       <thead>
+  //         <tr>
+  //           <th style={styles.tableHeader}>
+  //             {rowFields.length > 0 ? rowFields.join(' | ') : ''}
+  //           </th>
+  //           {colKeys.map((col) => (
+  //             <th key={col} style={styles.tableHeader}>
+  //               {col}
+  //             </th>
+  //           ))}
+  //           <th style={styles.tableHeader}>Grand Total</th>
+  //         </tr>
+  //       </thead>
+  //       <tbody>
+  //         {rowKeys.map((row) => (
+  //           <tr key={row}>
+  //             <td style={styles.tableRow}>{row}</td>
+  //             {colKeys.map((col) => (
+  //               <td key={col} style={styles.tableCell}>
+  //                 {pivotData[row][col]?.toFixed(2) || 0}
+  //               </td>
+  //             ))}
+  //             <td style={styles.tableCellGrand}>
+  //               {grandTotal.row[row]?.toFixed(2) || 0}
+  //             </td>
+  //           </tr>
+  //         ))}
+  //         <tr>
+  //           <td style={styles.tableRowGrand}>Grand Total</td>
+  //           {colKeys.map((col) => (
+  //             <td key={col} style={styles.tableCellGrand}>
+  //               {grandTotal.column[col]?.toFixed(2) || 0}
+  //             </td>
+  //           ))}
+  //           <td style={styles.tableCellGrand}>
+  //             {Object.values(grandTotal.row).reduce((a, b) => a + b, 0.0).toFixed(2)}
+  //           </td>
+  //         </tr>
+  //       </tbody>
+  //     </table>
+  //   );
+  // };
+
+  const renderHierarchicalPivotTable = (aggregatedData, rowFields) => {
+    const { pivotTree, colKeys, colTotals, grandTotal } = aggregatedData;
+    if (!aggregatedData || !aggregatedData.colKeys) return null;
 
     return (
       <table style={styles.pivotTable}>
         <thead>
           <tr>
             <th style={styles.tableHeader}>
-              {rowFields.length > 0 ? rowFields.join(' | ') : ''}
+              {rowFields.length > 0 ? rowFields.join(" | ") : ""}
             </th>
             {colKeys.map((col) => (
               <th key={col} style={styles.tableHeader}>
@@ -129,29 +224,15 @@ const GeneratingFields = () => {
           </tr>
         </thead>
         <tbody>
-          {rowKeys.map((row) => (
-            <tr key={row}>
-              <td style={styles.tableRow}>{row}</td>
-              {colKeys.map((col) => (
-                <td key={col} style={styles.tableCell}>
-                  {pivotData[row][col]?.toFixed(2) || 0}
-                </td>
-              ))}
-              <td style={styles.tableCellGrand}>
-                {grandTotal.row[row]?.toFixed(2) || 0}
-              </td>
-            </tr>
-          ))}
+          {renderHierarchicalRows(pivotTree, 0, colKeys)}
           <tr>
             <td style={styles.tableRowGrand}>Grand Total</td>
             {colKeys.map((col) => (
               <td key={col} style={styles.tableCellGrand}>
-                {grandTotal.column[col]?.toFixed(2) || 0}
+                {colTotals[col]?.toFixed(2) || ""}
               </td>
             ))}
-            <td style={styles.tableCellGrand}>
-              {Object.values(grandTotal.row).reduce((a, b) => a + b, 0.0).toFixed(2)}
-            </td>
+            <td style={styles.tableCellGrand}>{grandTotal.toFixed(2)}</td>
           </tr>
         </tbody>
       </table>
@@ -161,6 +242,26 @@ const GeneratingFields = () => {
   const showTable =
     rowFields.length > 0 && columnFields.length > 0 && valueFields.length > 0;
 
+  const renderHierarchicalRows = (tree, level, colKeys) => {
+    return Object.entries(tree).flatMap(([label, data]) => {
+      const row = (
+        <tr key={label + level}>
+          <td style={{ ...styles.tableRow, paddingLeft: `${level * 20}px` }}>
+            {label}
+          </td>
+          {colKeys.map((col) => (
+            <td key={col} style={styles.tableCell}>
+              {data.__cols__[col]?.toFixed(2) || ""}
+            </td>
+          ))}
+          <td style={styles.tableCellGrand}>{data.__total__.toFixed(2)}</td>
+        </tr>
+      );
+      const children = renderHierarchicalRows(data.__sub__, level + 1, colKeys);
+      return [row, ...children];
+    });
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.pivotContainer}>
@@ -168,16 +269,24 @@ const GeneratingFields = () => {
         {/* <div style={styles.pivotTablePlaceholder}> */}
         <h2 style={styles.pivotTablePlaceholder}>PIVOT TABLE</h2>
         {showTable ? (
-          renderPivotTable(
-            aggregateData(structuredData, rowFields, columnFields, valueFields),
-            rowFields
-          )
+          (() => {
+            const aggregated = aggregateHierarchicalData(
+              structuredData,
+              rowFields,
+              columnFields,
+              valueFields
+            );
+            return renderHierarchicalPivotTable(aggregated, rowFields);
+          })()
         ) : (
           <div style={styles.placeholderMessage}>
-            <h2 style={styles.placeholderMessage}>To Construct a Pivot table</h2>
+            <h2 style={styles.placeholderMessage}>
+              To Construct a Pivot table
+            </h2>
             Select at least one field in each category (Row, Column, and Value).
           </div>
         )}
+
         {/* </div> */}
       </div>
 
@@ -239,14 +348,8 @@ const styles = {
     borderLeft: "1px solid #ccc",
     display: "flex",
     flexDirection: "column",
-    gap: "20px", // Increased gap for better visual separation
-    //position: 'absolute',
-    //right: '0', // Position on the far right
-    //top: '0', // Covering the entire height of the screen
-    height: "100vh", // Full height of the screen
+    gap: "20px",
     overflowY: "auto",
-    //boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', // Light shadow for a subtle 3D effect
-    //borderRadius: '8px', // Slightly rounded corners for the whole pane
   },
   dropdownSection: {
     marginBottom: "20px", // Increased margin for better spacing
@@ -278,11 +381,11 @@ const styles = {
     padding: "4px 8px", // Smaller padding for a compact look
     borderRadius: "10px", // Rounded corners for the selected fields
     fontSize: "14px",
-    color: 'Black',
+    color: "Black",
   },
   removeButton: {
-    background: 'red', // Bright white background for the 'x'
-    color: '#000080',
+    background: "red", // Bright white background for the 'x'
+    color: "#000080",
     border: "none",
     borderRadius: "12px", // More rectangular pill style with rounded corners
     padding: "2px 6px", // Smaller padding to make it more compact
@@ -336,10 +439,10 @@ const styles = {
     backgroundColor: "#f0f0f0",
   },
   placeholderMessage: {
-    textAlign: 'center',
-    fontSize: '16px',
-    color: '#888',
-    paddingTop: '40px',
+    textAlign: "center",
+    fontSize: "16px",
+    color: "#888",
+    paddingTop: "40px",
   },
 };
 
