@@ -116,80 +116,85 @@ const GeneratingFields = () => {
   ) => {
     const pivotTree = {};
     const colSet = new Set();
-    let grandTotal = 0;
-    const colTotals = {};
-    const counts = {};
+    let grandSum = 0;
+    let grandCount = 0;
+    const colSums = {};
+    const colCounts = {};
+  
     data.forEach((row) => {
       const rowKeys = rowFields.map((field) => row[field]);
       const colKey = columnFields.map((field) => row[field]).join(" | ");
       colSet.add(colKey);
-
+  
       let pointer = pivotTree;
       rowKeys.forEach((key, idx) => {
-        if (!pointer[key])
-          pointer[key] = { __sub__: {}, __total__: 0, __cols__: {} };
+        if (!pointer[key]) {
+          pointer[key] = {
+            __sub__: {},
+            __cols__: {},
+            __sums__: {},
+            __counts__: {},
+          };
+        }
         if (idx === rowKeys.length - 1) {
           valueFields.forEach((field) => {
-            const rawVal = row[field];
-            const val = parseFloat(rawVal) || 0;
-            const countKey = rowKeys.join(" | ") + "||" + colKey;
+            const val = parseFloat(row[field]) || 0;
   
-            if (aggregationType === "Count") {
-              pointer[key].__cols__[colKey] =
-                (pointer[key].__cols__[colKey] || 0) + 1;
-              colTotals[colKey] = (colTotals[colKey] || 0) + 1;
-              pointer[key].__total__ += 1;
-              grandTotal += 1;
-            } else {
-              pointer[key].__cols__[colKey] =
-                (pointer[key].__cols__[colKey] || 0) + val;
-              colTotals[colKey] = (colTotals[colKey] || 0) + val;
-              pointer[key].__total__ += val;
-              grandTotal += val;
+            // Initialize
+            pointer[key].__sums__[colKey] = (pointer[key].__sums__[colKey] || 0) + val;
+            pointer[key].__counts__[colKey] = (pointer[key].__counts__[colKey] || 0) + 1;
   
-              if (aggregationType === "Average") {
-                counts[countKey] = (counts[countKey] || 0) + 1;
-              }
-            }
+            colSums[colKey] = (colSums[colKey] || 0) + val;
+            colCounts[colKey] = (colCounts[colKey] || 0) + 1;
+  
+            grandSum += val;
+            grandCount += 1;
           });
         }
-        pointer = pointer[key].__sub__
+  
+        pointer = pointer[key].__sub__;
       });
     });
-
-    if (aggregationType === "Average") {
-      Object.entries(pivotTree).forEach(function applyAverage([label, node]) {
-        const applyToNode = (node, rowPrefix) => {
-          Object.entries(node.__cols__).forEach(([col, sum]) => {
-            const countKey = rowPrefix + "||" + col;
-            const count = counts[countKey] || 1;
-            node.__cols__[col] = sum / count;
-          });
   
-          Object.values(node.__sub__).forEach((sub, idx) => {
-            applyToNode(sub, rowPrefix + " | " + Object.keys(node.__sub__)[idx]);
-          });
-        };
-  
-        applyToNode(node, label);
+    // Compute averages or sums based on the selected type
+    const finalizeTree = (node) => {
+      node.__total__ = 0;
+      Object.keys(node.__sums__ || {}).forEach((colKey) => {
+        let value;
+        if (aggregationType === "Average") {
+          value = node.__sums__[colKey] / node.__counts__[colKey];
+        } else if (aggregationType === "Sum") {
+          value = node.__sums__[colKey];
+        } else if (aggregationType === "Count") {
+          value = node.__counts__[colKey];
+        }
+        node.__cols__[colKey] = value;
+        node.__total__ += value;
       });
   
-      // Average totals
-      Object.keys(colTotals).forEach((col) => {
-        let total = 0;
-        let count = 0;
-        Object.entries(counts).forEach(([key, c]) => {
-          if (key.endsWith("||" + col)) {
-            total += colTotals[col];
-            count += c;
-          }
-        });
-        colTotals[col] = count ? colTotals[col] / count : 0;
-      });
+      Object.values(node.__sub__).forEach((child) => finalizeTree(child));
+    };
   
-      grandTotal = Object.values(colTotals).reduce((a, b) => a + b, 0);
-    }
-
+    Object.values(pivotTree).forEach(finalizeTree);
+  
+    const colTotals = {};
+    Array.from(colSet).forEach((colKey) => {
+      if (aggregationType === "Average") {
+        colTotals[colKey] = colSums[colKey] / colCounts[colKey];
+      } else if (aggregationType === "Sum") {
+        colTotals[colKey] = colSums[colKey];
+      } else if (aggregationType === "Count") {
+        colTotals[colKey] = colCounts[colKey];
+      }
+    });
+  
+    const grandTotal =
+      aggregationType === "Average"
+        ? grandSum / grandCount
+        : aggregationType === "Sum"
+        ? grandSum
+        : grandCount;
+  
     return {
       pivotTree,
       colKeys: Array.from(colSet),
@@ -197,6 +202,7 @@ const GeneratingFields = () => {
       grandTotal,
     };
   };
+  
 
   // const renderPivotTable = (aggregatedData, rowFields) => {
   //   const { pivotData, grandTotal } = aggregatedData;
