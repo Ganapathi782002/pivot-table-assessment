@@ -14,13 +14,13 @@ const UploadFile = () => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-
+  
     const validTypes = [
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'text/csv',
     ];
-
+  
     if (!validTypes.includes(selectedFile.type)) {
       toast.error('Invalid file format. Please upload an Excel or CSV file.');
       setFile(null);
@@ -30,26 +30,62 @@ const UploadFile = () => {
       }, 3000);
       return;
     }
-
+  
     setFile(selectedFile);
     toast.success(`${selectedFile.name} uploaded successfully!`);
-
+  
     const reader = new FileReader();
     reader.onload = (event) => {
       const data = new Uint8Array(event.target.result);
       const workbook = XLSX.read(data, { type: 'array' });
-
+  
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-      const firstFiveRows = jsonData.slice(0, 6);
+  
+      const headers = jsonData[0];
+      const dateColumnIndexes = headers.map((h, idx) =>
+        /^(date|dates)$/i.test(h) ? idx : -1
+      ).filter(idx => idx !== -1);
+  
+      const formatDate = (dateObj) => {
+        const d = new Date(dateObj);
+        if (isNaN(d)) return dateObj; // fallback
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+  
+      const excelDateToJSDate = (serial) => {
+        const utcDays = Math.floor(serial - 25569);
+        const utcValue = utcDays * 86400;
+        return new Date(utcValue * 1000);
+      };
+  
+      const parsedData = jsonData.map((row, rowIndex) => {
+        if (rowIndex === 0) return row; // headers
+  
+        return row.map((cell, colIndex) => {
+          if (dateColumnIndexes.includes(colIndex)) {
+            if (!isNaN(cell)) {
+              return formatDate(excelDateToJSDate(cell));
+            } else {
+              return formatDate(cell);
+            }
+          }
+          return cell;
+        });
+      });
+  
+      const firstFiveRows = parsedData.slice(0, 6);
       setPreviewData(firstFiveRows);
-      setFullData(jsonData)
+      setFullData(parsedData);
     };
-
+  
     reader.readAsArrayBuffer(selectedFile);
   };
+  
 
   const handleButtonClick = () => {
     // Correct navigation to the new page without .js extension
