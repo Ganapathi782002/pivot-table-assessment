@@ -108,125 +108,128 @@ const GeneratingFields = () => {
     </div>
   );
 
-  const aggregateData = (data, rowFields, columnFields, valueFields) => {
-    const pivotData = {};
-    const grandTotal = { row: {}, column: {} };
+  const aggregateData = (data, rowFields, columnFields, valueFields, aggregationType) => {
+    const rowKeys = new Set();
+    const colKeys = new Set();
+    const dataMap = {};
+    const result = [];
 
-    data.forEach((row) => {
-      const rowKey = rowFields.map((field) => row[field]).join(" | ");
-      const columnKey = columnFields.map((field) => row[field]).join(" | ");
+    data.forEach(item => {
+      const rowKey = rowFields.map(field => item[field]).join(' | ');
+      const colKey = columnFields.map(field => item[field]).join(' | ');
 
-      if (!pivotData[rowKey]) pivotData[rowKey] = {};
-      if (!pivotData[rowKey][columnKey]) pivotData[rowKey][columnKey] = 0;
+      rowKeys.add(rowKey);
+      colKeys.add(colKey);
 
-      valueFields.forEach((valueField) => {
-        const value = parseFloat(row[valueField]) || 0;
-        pivotData[rowKey][columnKey] += value;
+      if (!dataMap[rowKey]) dataMap[rowKey] = {};
+      if (!dataMap[rowKey][colKey]) dataMap[rowKey][colKey] = { count: 0 }; // Store count for averages
 
-        // Update grand totals
-        grandTotal.row[rowKey] = (grandTotal.row[rowKey] || 0) + value;
-        grandTotal.column[columnKey] =
-          (grandTotal.column[columnKey] || 0) + value;
+      valueFields.forEach(field => {
+        const fieldValue = parseFloat(item[field]) || 0;
+        dataMap[rowKey][colKey][field] = (dataMap[rowKey][colKey][field] || 0) + fieldValue;
+        dataMap[rowKey][colKey].count++; // Increment count for each value
       });
     });
 
-    return { pivotData, grandTotal };
-  };
+    const rowKeysArray = Array.from(rowKeys);
+    const colKeysArray = Array.from(colKeys);
 
-  const aggregateHierarchicalData = (
-    data,
-    rowFields,
-    columnFields,
-    valueFields,
-    aggregationType
-  ) => {
-    const pivotTree = {};
-    const colSet = new Set();
-    let grandSum = 0;
-    let grandCount = 0;
-    const colSums = {};
-    const colCounts = {};
+    // Function to get aggregated value
+    const getAggregatedValue = (rowKey, colKey, field) => {
+      const values = dataMap[rowKey]?.[colKey] || {};
+      let aggregatedValue = values[field] || 0;
 
-    data.forEach((row) => {
-      const rowKeys = rowFields.map((field) => row[field]);
-      const colKey = columnFields.map((field) => row[field]).join(" | ");
-      colSet.add(colKey);
-
-      let pointer = pivotTree;
-      rowKeys.forEach((key, idx) => {
-        if (!pointer[key]) {
-          pointer[key] = {
-            __sub__: {},
-            __cols__: {},
-            __sums__: {},
-            __counts__: {},
-          };
-        }
-        if (idx === rowKeys.length - 1) {
-          valueFields.forEach((field) => {
-            const val = parseFloat(row[field]) || 0;
-
-            // Initialize
-            pointer[key].__sums__[colKey] = (pointer[key].__sums__[colKey] || 0) + val;
-            pointer[key].__counts__[colKey] = (pointer[key].__counts__[colKey] || 0) + 1;
-
-            colSums[colKey] = (colSums[colKey] || 0) + val;
-            colCounts[colKey] = (colCounts[colKey] || 0) + 1;
-
-            grandSum += val;
-            grandCount += 1;
-          });
-        }
-
-        pointer = pointer[key].__sub__;
-      });
-    });
-
-    // Compute averages or sums based on the selected type
-    const finalizeTree = (node) => {
-      node.__total__ = 0;
-      Object.keys(node.__sums__ || {}).forEach((colKey) => {
-        let value;
-        if (aggregationType === "Average") {
-          value = node.__sums__[colKey] / node.__counts__[colKey];
-        } else if (aggregationType === "Sum") {
-          value = node.__sums__[colKey];
-        } else if (aggregationType === "Count") {
-          value = node.__counts__[colKey];
-        }
-        node.__cols__[colKey] = value;
-        node.__total__ += value;
-      });
-
-      Object.values(node.__sub__).forEach((child) => finalizeTree(child));
-    };
-
-    Object.values(pivotTree).forEach(finalizeTree);
-
-    const colTotals = {};
-    Array.from(colSet).forEach((colKey) => {
-      if (aggregationType === "Average") {
-        colTotals[colKey] = colSums[colKey] / colCounts[colKey];
-      } else if (aggregationType === "Sum") {
-        colTotals[colKey] = colSums[colKey];
-      } else if (aggregationType === "Count") {
-        colTotals[colKey] = colCounts[colKey];
+      if (aggregationType === 'Average') {
+        const count = values.count || 0;
+        aggregatedValue = count > 0 ? aggregatedValue / count : 0;
+      } else if (aggregationType === 'Count') {
+        aggregatedValue = values.count || 0;
       }
-    });
-
-    const grandTotal =
-      aggregationType === "Average"
-        ? grandSum / grandCount
-        : aggregationType === "Sum"
-        ? grandSum
-        : grandCount;
-
-    return {
-      pivotTree,
-      colKeys: Array.from(colSet),
-      colTotals,
-      grandTotal,
+      return aggregatedValue.toFixed(2);
     };
+
+    // Create the result array
+    if (rowFields.length > 0 || columnFields.length > 0) {
+      if (rowFields.length > 0 && columnFields.length > 0) {
+        rowKeysArray.forEach(rowKey => {
+          const rowData = { [rowFields.join(' | ')]: rowKey };
+          colKeysArray.forEach(colKey => {
+            valueFields.forEach(field => {
+              rowData[`${colKey} - ${field}`] = getAggregatedValue(rowKey, colKey, field);
+            });
+          });
+          result.push(rowData);
+        });
+
+        // Add Column Grand Totals Row
+        const colGrandTotal = { [rowFields.join(' | ')]: 'Grand Total' };
+        colKeysArray.forEach(colKey => {
+          valueFields.forEach(field => {
+            let total = 0;
+            rowKeysArray.forEach(rKey => {
+              total += parseFloat(getAggregatedValue(rKey, colKey, field)) || 0;
+            });
+            colGrandTotal[`${colKey} - ${field}`] = total.toFixed(2);
+          });
+        });
+        result.push(colGrandTotal);
+
+        // Add Row Grand Totals Column and Overall Grand Total
+        const rowGrandTotal = {};
+        const overallGrandTotal = {};  // To store the sum of all values
+        valueFields.forEach(field => {
+          rowGrandTotal[field] = 0; // Initialize row grand totals for each value field
+          overallGrandTotal[field] = 0;
+        });
+
+        result.forEach(row => {
+          if (row[rowFields.join(' | ')] !== 'Grand Total') { // Exclude the column grand total row.
+            valueFields.forEach(field => {
+              let rowTotal = 0;
+              colKeysArray.forEach(colKey => {
+                const cellValue = parseFloat(row[`${colKey} - ${field}`]) || 0;
+                rowTotal += cellValue;
+                overallGrandTotal[field] += cellValue; // Accumulate for overall grand total
+              });
+              row[`Grand Total`] = rowTotal.toFixed(2);
+              rowGrandTotal[field] += rowTotal; // Accumulate row totals
+            });
+          }
+        });
+        //add grand total for the row grand total
+        if (result.length > 0 && result[result.length-1][rowFields.join(' | ')] === 'Grand Total'){
+          valueFields.forEach(field=>{
+            result[result.length-1][`Grand Total`] =  overallGrandTotal[field].toFixed(2);
+          })
+        }
+        else{
+          result.push({[rowFields.join(' | ')]: 'Grand Total', ...rowGrandTotal, ['Grand Total']: Object.values(overallGrandTotal).reduce((a,b)=>a+b,0).toFixed(2)});
+        }
+      }
+      else if (rowFields.length > 0) {
+        rowKeysArray.forEach(rowKey => {
+          const rowData = { [rowFields.join(' | ')]: rowKey };
+          valueFields.forEach(field => {
+            let total = 0;
+            colKeysArray.forEach(k => {
+              total += parseFloat(getAggregatedValue(rowKey, k, field)) || 0
+            })
+            rowData[field] = aggregationType === 'Average' ? (total / colKeysArray.length).toFixed(2) : total.toFixed(2);
+          });
+          result.push(rowData);
+        });
+      }
+      else if (columnFields.length > 0) {
+        colKeysArray.forEach(colKey => {
+          const rowData = { [columnFields.join(' | ')]: colKey };
+          valueFields.forEach(field => {
+            rowData[field] = getAggregatedValue("", colKey, field);
+          });
+          result.push(rowData);
+        });
+      }
+    }
+    return { result, rowKeysArray, colKeysArray };
   };
 
   const downloadExcel = () => {
@@ -238,71 +241,29 @@ const GeneratingFields = () => {
     writeFile(wb, "pivot_table.xlsx");
   };
 
-  const renderHierarchicalPivotTable = (aggregatedData, rowFields) => {
-    const { pivotTree, colKeys, colTotals, grandTotal } = aggregatedData;
-    if (!aggregatedData) return null;
+  const showTable = rowFields.length > 0 || columnFields.length > 0;
 
-    if (!colKeys || colKeys.length === 0) {
-      return (
-        <div style={styles.placeholderMessage}>
-          No data to display for the current selections.
-        </div>
-      );
+  const getTableHeader = (rowFields, colKeysArray, valueFields, columnFields) => {
+    const headers = [];
+    if (rowFields.length > 0) {
+      headers.push(rowFields.join(' | '));
     }
-
-    return (
-      <table style={styles.pivotTable} ref={pivotTableRef}>
-        <thead>
-          <tr>
-            <th style={styles.tableHeader}>
-              {rowFields.length > 0 ? rowFields.join(" | ") : ""}
-            </th>
-            {colKeys.map((col) => (
-              <th key={col} style={styles.tableHeader}>
-                {col}
-              </th>
-            ))}
-            <th style={styles.tableHeader}>Grand Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {renderHierarchicalRows(pivotTree, 0, colKeys)}
-          <tr>
-            <td style={styles.tableRowGrand}>Grand Total</td>
-            {colKeys.map((col) => (
-              <td key={col} style={styles.tableCellGrand}>
-                {colTotals[col]?.toFixed(2) || ""}
-              </td>
-            ))}
-            <td style={styles.tableCellGrand}>{grandTotal.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-    );
-  };
-
-  const showTable =
-    rowFields.length > 0 && columnFields.length > 0 && valueFields.length > 0;
-
-  const renderHierarchicalRows = (tree, level, colKeys) => {
-    return Object.entries(tree).flatMap(([label, data]) => {
-      const row = (
-        <tr key={label + level}>
-          <td style={{ ...styles.tableRow, paddingLeft: `${level * 20}px` }}>
-            {label}
-          </td>
-          {colKeys.map((col) => (
-            <td key={col} style={styles.tableCell}>
-              {data.__cols__[col]?.toFixed(2) || ""}
-            </td>
-          ))}
-          <td style={styles.tableCellGrand}>{data.__total__.toFixed(2)}</td>
-        </tr>
-      );
-      const children = renderHierarchicalRows(data.__sub__, level + 1, colKeys);
-      return [row, ...children];
-    });
-  };
+    if (colKeysArray.length === 0 && valueFields.length > 0) {
+      valueFields.forEach(v => headers.push(v));
+    } else if (colKeysArray.length > 0) {
+      colKeysArray.forEach(ck => {
+        valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
+      });
+    }
+    else if (rowFields.length === 0 && columnFields.length > 0) {
+      headers.push(columnFields.join(' | '));
+      valueFields.forEach(v => headers.push(v));
+    }
+    if (rowFields.length > 0 && columnFields.length > 0) {
+      headers.push('Grand Total');
+    }
+    return headers;
+  }
 
   return (
     <div style={styles.container}>
@@ -311,14 +272,46 @@ const GeneratingFields = () => {
         {showTable ? (
           <>
             {(() => {
-              const aggregated = aggregateHierarchicalData(
+              const { result, rowKeysArray, colKeysArray } = aggregateData(
                 structuredData,
                 rowFields,
                 columnFields,
                 valueFields,
                 aggregationType
               );
-              return renderHierarchicalPivotTable(aggregated, rowFields);
+              const tableHeader = getTableHeader(rowFields, colKeysArray, valueFields, columnFields);
+              return (
+                <table style={styles.pivotTable} ref={pivotTableRef}>
+                  <thead>
+                    <tr>
+                      {tableHeader.map((header, index) => (
+                        <th key={index} style={styles.tableHeader}>
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.map((row, index) => {
+                      const isGrandTotalRow = row[rowFields.join(' | ')] === 'Grand Total';
+                      const rowStyle = isGrandTotalRow ? styles.tableHeaderGrand : styles.tableRow;
+                      return (
+                        <tr key={index} style={rowStyle}>
+                          {tableHeader.map((header, hIndex) => {
+                            const isGrandTotalCell = isGrandTotalRow || header === 'Grand Total';
+                            const cellStyle = isGrandTotalCell ? styles.tableCellGrand : styles.tableCell;
+                            return (
+                              <td key={`${header}-${index}`} style={cellStyle}>
+                                {row[header] || ''}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              );
             })()}
             <button style={styles.downloadButton} onClick={downloadExcel}>
               Download as Excel
@@ -329,7 +322,7 @@ const GeneratingFields = () => {
             <h2 style={styles.placeholderMessage}>
               To Construct a Pivot table
             </h2>
-            Select at least one field in each category (Row, Column, and Value).
+            Select at least one field in Row or Column.
           </div>
         )}
       </div>
@@ -380,7 +373,7 @@ const styles = {
     padding: "20px",
     overflow: "auto",
     backgroundColor: "#fff",
-    position: "relative", // For positioning the download button
+    position: "relative",
   },
   pivotTablePlaceholder: {
     textAlign: "center",
@@ -504,3 +497,4 @@ const styles = {
 };
 
 export default GeneratingFields;
+
