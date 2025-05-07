@@ -15,8 +15,9 @@ const GeneratingFields = () => {
   const [aggregationType, setAggregationType] = useState("Sum");
   const pivotTableRef = useRef(null);
 
+  // Handle case where data is not available or insufficient
   if (!fullData || fullData.length < 2) {
-    return <div>No data received</div>;
+    return <div>No data received or insufficient data</div>;
   }
 
   // Extract headers and structured rows
@@ -72,6 +73,7 @@ const GeneratingFields = () => {
           Add a field
         </option>
         {options
+          .filter(field => !currentFields.includes(field)) // Filter out already selected fields
           .map((field) => (
             <option key={field} value={field}>
               {field}
@@ -127,12 +129,13 @@ const GeneratingFields = () => {
       valueFields.forEach(field => {
         const fieldValue = parseFloat(item[field]) || 0;
         dataMap[rowKey][colKey][field] = (dataMap[rowKey][colKey][field] || 0) + fieldValue;
-        dataMap[rowKey][colKey].count++; // Increment count for each value
+        dataMap[rowKey][colKey].count++; // Increment count for each row contributing to this cell
       });
     });
 
-    const rowKeysArray = Array.from(rowKeys);
-    const colKeysArray = Array.from(colKeys);
+    const rowKeysArray = Array.from(rowKeys).filter(key => key !== ''); // Filter out empty keys
+    const colKeysArray = Array.from(colKeys).filter(key => key !== ''); // Filter out empty keys
+
 
     // Function to get aggregated value
     const getAggregatedValue = (rowKey, colKey, field) => {
@@ -140,9 +143,11 @@ const GeneratingFields = () => {
       let aggregatedValue = values[field] || 0;
 
       if (aggregationType === 'Average') {
+        // Calculate average based on the count of contributing rows for this cell
         const count = values.count || 0;
         aggregatedValue = count > 0 ? aggregatedValue / count : 0;
       } else if (aggregationType === 'Count') {
+        // Count refers to the number of rows that contribute to this cell
         aggregatedValue = values.count || 0;
       }
       return aggregatedValue.toFixed(2);
@@ -150,6 +155,7 @@ const GeneratingFields = () => {
 
     // Create the result array
     if (rowFields.length > 0 || columnFields.length > 0) {
+      // Case 1: Row and Column fields selected
       if (rowFields.length > 0 && columnFields.length > 0) {
         rowKeysArray.forEach(rowKey => {
           const rowData = { [rowFields.join(' | ')]: rowKey };
@@ -163,7 +169,7 @@ const GeneratingFields = () => {
 
         // Add Column Grand Totals Row
         const colGrandTotal = { [rowFields.join(' | ')]: 'Grand Total' };
-        valueFields.forEach(field => { // Iterate over value fields
+        valueFields.forEach(field => {
           colKeysArray.forEach(colKey => {
             let total = 0;
             rowKeysArray.forEach(rKey => {
@@ -174,11 +180,9 @@ const GeneratingFields = () => {
         });
         result.push(colGrandTotal);
 
-        // Add Row Grand Totals Column and Overall Grand Total
-        const rowGrandTotal = {};
-        const overallGrandTotal = {};  // To store the sum of all values
+        // Calculate Row Grand Totals and Overall Grand Total
+        const overallGrandTotal = {};
         valueFields.forEach(field => {
-          rowGrandTotal[`Grand Total - ${field}`] = 0; // Initialize row grand totals for each value field
           overallGrandTotal[field] = 0;
         });
 
@@ -192,50 +196,130 @@ const GeneratingFields = () => {
                 overallGrandTotal[field] += cellValue;
               });
               row[`Grand Total - ${field}`] = rowTotal.toFixed(2);
-              rowGrandTotal[`Grand Total - ${field}`] += rowTotal;
             });
           }
         });
 
-        //add grand total for the row grand total
+        // Update the Grand Total row with the overall grand total
         if (result.length > 0 && result[result.length - 1][rowFields.join(' | ')] === 'Grand Total') {
           valueFields.forEach(field => {
             result[result.length - 1][`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
-          })
-        }
-        else {
-          const grandTotalRow = { [rowFields.join(' | ')]: 'Grand Total' };
-          valueFields.forEach(field => {
-            grandTotalRow[`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
           });
-          result.push(grandTotalRow);
         }
+
       }
-      else if (rowFields.length > 0) {
+      // Case 2: Only Row fields selected
+      else if (rowFields.length > 0 && valueFields.length > 0) {
         rowKeysArray.forEach(rowKey => {
           const rowData = { [rowFields.join(' | ')]: rowKey };
           valueFields.forEach(field => {
             let total = 0;
-            colKeysArray.forEach(k => {
-              total += parseFloat(getAggregatedValue(rowKey, k, field)) || 0
-            })
-            rowData[field] = aggregationType === 'Average' ? (total / colKeysArray.length).toFixed(2) : total.toFixed(2);
+            // When only row fields are present, aggregate across all original data points for that row key
+            const relevantData = data.filter(item => rowFields.map(f => item[f]).join(' | ') === rowKey);
+            relevantData.forEach(item => {
+                 const fieldValue = parseFloat(item[field]) || 0;
+                 total += fieldValue;
+            });
+
+            if (aggregationType === 'Average' && relevantData.length > 0) {
+                rowData[field] = (total / relevantData.length).toFixed(2);
+            } else if (aggregationType === 'Count') {
+                 rowData[field] = relevantData.length.toFixed(2);
+            }
+             else {
+                rowData[field] = total.toFixed(2);
+            }
           });
           result.push(rowData);
         });
+
+        // Add Grand Total Row for only row fields
+        const grandTotalRow = { [rowFields.join(' | ')]: 'Grand Total' };
+        valueFields.forEach(field => {
+          let total = 0;
+           data.forEach(item => {
+             const fieldValue = parseFloat(item[field]) || 0;
+             total += fieldValue;
+           });
+           if (aggregationType === 'Average' && data.length > 0) {
+               grandTotalRow[field] = (total / data.length).toFixed(2);
+           } else if (aggregationType === 'Count') {
+               grandTotalRow[field] = data.length.toFixed(2);
+           } else {
+               grandTotalRow[field] = total.toFixed(2);
+           }
+        });
+        result.push(grandTotalRow);
       }
-      else if (columnFields.length > 0) {
+      // Case 3: Only Column fields selected
+      else if (columnFields.length > 0 && valueFields.length > 0) {
         colKeysArray.forEach(colKey => {
           const rowData = { [columnFields.join(' | ')]: colKey };
           valueFields.forEach(field => {
-            rowData[field] = getAggregatedValue("", colKey, field);
+            let total = 0;
+            // When only column fields are present, aggregate across all original data points for that column key
+             const relevantData = data.filter(item => columnFields.map(f => item[f]).join(' | ') === colKey);
+             relevantData.forEach(item => {
+                 const fieldValue = parseFloat(item[field]) || 0;
+                 total += fieldValue;
+             });
+
+             if (aggregationType === 'Average' && relevantData.length > 0) {
+                 rowData[field] = (total / relevantData.length).toFixed(2);
+             } else if (aggregationType === 'Count') {
+                 rowData[field] = relevantData.length.toFixed(2);
+             }
+             else {
+                 rowData[field] = total.toFixed(2);
+             }
           });
           result.push(rowData);
         });
+
+         // Add Grand Total Row for only column fields
+         const grandTotalRow = { [columnFields.join(' | ')]: 'Grand Total' };
+         valueFields.forEach(field => {
+           let total = 0;
+           data.forEach(item => {
+             const fieldValue = parseFloat(item[field]) || 0;
+             total += fieldValue;
+           });
+           if (aggregationType === 'Average' && data.length > 0) {
+               grandTotalRow[field] = (total / data.length).toFixed(2);
+           } else if (aggregationType === 'Count') {
+               grandTotalRow[field] = data.length.toFixed(2);
+           } else {
+               grandTotalRow[field] = total.toFixed(2);
+           }
+         });
+         result.push(grandTotalRow);
       }
     }
+    // Case 4: Only Value fields selected (display a single row with aggregated values)
+     else if (valueFields.length > 0) {
+        const rowData = { "Grand Total": "Grand Total" }; // Placeholder for clarity
+        valueFields.forEach(field => {
+            let total = 0;
+            data.forEach(item => {
+                const fieldValue = parseFloat(item[field]) || 0;
+                total += fieldValue;
+            });
+            if (aggregationType === 'Average' && data.length > 0) {
+                rowData[field] = (total / data.length).toFixed(2);
+            } else if (aggregationType === 'Count') {
+                 rowData[field] = data.length.toFixed(2);
+            }
+            else {
+                rowData[field] = total.toFixed(2);
+            }
+        });
+        result.push(rowData);
+     }
+
+
     return { result, rowKeysArray, colKeysArray };
   };
+
 
   const downloadExcel = () => {
     if (!pivotTableRef.current) return;
@@ -246,24 +330,37 @@ const GeneratingFields = () => {
     writeFile(wb, "pivot_table.xlsx");
   };
 
-  const showTable = rowFields.length > 0 || columnFields.length > 0;
+  const showTable = rowFields.length > 0 || columnFields.length > 0 || valueFields.length > 0;
+
 
   const getTableHeader = (rowFields, colKeysArray, valueFields, columnFields) => {
     const headers = [];
     if (rowFields.length > 0) {
       headers.push(rowFields.join(' | '));
+    } else if (columnFields.length > 0) {
+      headers.push(columnFields.join(' | '));
+    } else if (valueFields.length > 0 && rowFields.length === 0 && columnFields.length === 0) {
+       headers.push("Grand Total"); // Header for the single row in value-only case
     }
-    if (colKeysArray.length === 0 && valueFields.length > 0) {
+
+
+    if (colKeysArray.length === 0 && valueFields.length > 0 && rowFields.length > 0) {
       valueFields.forEach(v => headers.push(v));
     } else if (colKeysArray.length > 0) {
       colKeysArray.forEach(ck => {
         valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
       });
-    }
-    else if (rowFields.length === 0 && columnFields.length > 0) {
-      headers.push(columnFields.join(' | '));
+    } else if (rowFields.length === 0 && columnFields.length > 0 && valueFields.length > 0) {
       valueFields.forEach(v => headers.push(v));
+    } else if (rowFields.length > 0 && columnFields.length === 0 && valueFields.length > 0) {
+       valueFields.forEach(v => headers.push(v));
     }
+     else if (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0) {
+         valueFields.forEach(v => headers.push(v));
+     }
+
+
+
     if (rowFields.length > 0 && columnFields.length > 0) {
       valueFields.forEach(field => {
         headers.push(`Grand Total - ${field}`);
@@ -271,6 +368,7 @@ const GeneratingFields = () => {
     }
     return headers;
   }
+
 
   return (
     <div style={styles.container}>
@@ -286,7 +384,13 @@ const GeneratingFields = () => {
                 valueFields,
                 aggregationType
               );
-              const tableHeader = getTableHeader(rowFields, colKeysArray, valueFields, columnFields);
+               const tableHeader = getTableHeader(rowFields, colKeysArray, valueFields, columnFields);
+
+               if (result.length === 0) {
+                 return <div style={styles.placeholderMessage}>No data to display for the selected fields.</div>;
+               }
+
+
               return (
                 <table style={styles.pivotTable} ref={pivotTableRef}>
                   <thead>
@@ -300,16 +404,20 @@ const GeneratingFields = () => {
                   </thead>
                   <tbody>
                     {result.map((row, index) => {
-                      const isGrandTotalRow = row[rowFields.join(' | ')] === 'Grand Total';
-                      const rowStyle = isGrandTotalRow ? styles.tableHeaderGrand : styles.tableRow;
+                      const isGrandTotalRow = (rowFields.length > 0 && row[rowFields.join(' | ')] === 'Grand Total') ||
+                                              (columnFields.length > 0 && row[columnFields.join(' | ')] === 'Grand Total') ||
+                                              (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0 && row["Grand Total"] === "Grand Total");
+
+                      const rowStyle = isGrandTotalRow ? styles.tableRowGrand : styles.tableRow;
                       return (
                         <tr key={index} style={rowStyle}>
-                          {tableHeader.map((header, hIndex) => {
-                            const isGrandTotalCell = isGrandTotalRow || header.startsWith('Grand Total');
+                          {tableHeader.map((header, cellIndex) => { // Use tableHeader to iterate through cells
+                             const cellValue = row[header]; // Access cell value using the header
+                            const isGrandTotalCell = isGrandTotalRow || (header && header.startsWith('Grand Total'));
                             const cellStyle = isGrandTotalCell ? styles.tableCellGrand : styles.tableCell;
                             return (
-                              <td key={`${header}-${index}`} style={cellStyle}>
-                                {row[header] || ''}
+                              <td key={cellIndex} style={cellStyle}>
+                                {cellValue || ''}
                               </td>
                             )
                           })}
@@ -329,7 +437,7 @@ const GeneratingFields = () => {
             <h2 style={styles.placeholderMessage}>
               To Construct a Pivot table
             </h2>
-            Select at least one field in Row or Column.
+            Select at least one field in Row or Column and one field in Value.
           </div>
         )}
       </div>
@@ -430,54 +538,53 @@ const styles = {
   },
   removeButton: {
     background: "red",
-    color: "#000080",
+    color: "#000080", // Changed to a more visible color
     border: "none",
     borderRadius: "12px",
     padding: "2px 6px",
     cursor: "pointer",
     fontSize: "10px",
+    marginLeft: "5px", // Added some margin
   },
   pivotTable: {
     width: "100%",
     borderCollapse: "collapse",
     backgroundColor: "#fff",
     fontSize: "13px",
+    marginTop: "20px", // Added margin for spacing
   },
   tableHeader: {
     border: "1px solid #ccc",
-    padding: "6px",
+    padding: "8px", // Increased padding
     backgroundColor: "#f0f0f0",
     textAlign: "center",
     fontWeight: "bold",
+    whiteSpace: "nowrap", // Prevent header text wrapping
   },
-  tableHeaderGrand: {
+   tableHeaderGrand: { // Merged with tableHeader style as they were identical
     border: "1px solid #ccc",
-    padding: "6px",
+    padding: "8px",
     backgroundColor: "#f0f0f0",
     textAlign: "center",
     fontWeight: "bold",
+    whiteSpace: "nowrap",
   },
   tableRow: {
     border: "1px solid #ccc",
-    padding: "6px",
-    backgroundColor: "#fafafa",
-    textAlign: "center",
   },
   tableRowGrand: {
     border: "1px solid #ccc",
-    padding: "6px",
-    backgroundColor: "#f0f0f0",
-    textAlign: "center",
     fontWeight: "bold",
+    backgroundColor: "#f0f0f0", // Added background for grand total row
   },
   tableCell: {
     border: "1px solid #ccc",
-    padding: "6px",
+    padding: "8px", // Increased padding
     textAlign: "center",
   },
   tableCellGrand: {
     border: "1px solid #ccc",
-    padding: "6px",
+    padding: "8px",
     textAlign: "center",
     fontWeight: "bold",
     backgroundColor: "#f0f0f0",
@@ -500,6 +607,7 @@ const styles = {
     cursor: "pointer",
     fontSize: "14px",
     marginTop: "20px",
+    alignSelf: "flex-start", // Align button to the left
   },
 };
 
