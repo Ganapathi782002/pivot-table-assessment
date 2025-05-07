@@ -117,8 +117,9 @@ const GeneratingFields = () => {
     const result = [];
 
     data.forEach(item => {
-      const rowKey = rowFields.map(field => item[field]).join(' | ');
-      const colKey = columnFields.map(field => item[field]).join(' | ');
+      const rowKey = rowFields.length > 0 ? rowFields.map(field => item[field]).join(' | ') : 'Grand Total'; // Use 'Grand Total' if no row fields
+      const colKey = columnFields.length > 0 ? columnFields.map(field => item[field]).join(' | ') : 'Grand Total'; // Use 'Grand Total' if no column fields
+
 
       rowKeys.add(rowKey);
       colKeys.add(colKey);
@@ -154,149 +155,157 @@ const GeneratingFields = () => {
     };
 
     // Create the result array
-    if (rowFields.length > 0 || columnFields.length > 0) {
+    if (rowFields.length > 0 && columnFields.length > 0) {
       // Case 1: Row and Column fields selected
-      if (rowFields.length > 0 && columnFields.length > 0) {
-        rowKeysArray.forEach(rowKey => {
-          const rowData = { [rowFields.join(' | ')]: rowKey };
-          colKeysArray.forEach(colKey => {
-            valueFields.forEach(field => {
-              rowData[`${colKey} - ${field}`] = getAggregatedValue(rowKey, colKey, field);
-            });
-          });
-          result.push(rowData);
-        });
-
-        // Add Column Grand Totals Row
-        const colGrandTotal = { [rowFields.join(' | ')]: 'Grand Total' };
-        valueFields.forEach(field => {
-          colKeysArray.forEach(colKey => {
-            let total = 0;
-            rowKeysArray.forEach(rKey => {
-              total += parseFloat(getAggregatedValue(rKey, colKey, field)) || 0;
-            });
-            colGrandTotal[`${colKey} - ${field}`] = total.toFixed(2);
-          });
-        });
-        result.push(colGrandTotal);
-
-        // Calculate Row Grand Totals and Overall Grand Total
-        const overallGrandTotal = {};
-        valueFields.forEach(field => {
-          overallGrandTotal[field] = 0;
-        });
-
-        result.forEach(row => {
-          if (row[rowFields.join(' | ')] !== 'Grand Total') {
-            valueFields.forEach(field => {
-              let rowTotal = 0;
-              colKeysArray.forEach(colKey => {
-                const cellValue = parseFloat(row[`${colKey} - ${field}`]) || 0;
-                rowTotal += cellValue;
-                overallGrandTotal[field] += cellValue;
-              });
-              row[`Grand Total - ${field}`] = rowTotal.toFixed(2);
-            });
-          }
-        });
-
-        // Update the Grand Total row with the overall grand total
-        if (result.length > 0 && result[result.length - 1][rowFields.join(' | ')] === 'Grand Total') {
+      rowKeysArray.forEach(rowKey => {
+        const rowData = { [rowFields.join(' | ')]: rowKey };
+        colKeysArray.forEach(colKey => {
           valueFields.forEach(field => {
-            result[result.length - 1][`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
+            rowData[`${colKey} - ${field}`] = getAggregatedValue(rowKey, colKey, field);
+          });
+        });
+        result.push(rowData);
+      });
+
+      // Add Column Grand Totals Row
+      const colGrandTotal = { [rowFields.join(' | ')]: 'Grand Total' };
+      valueFields.forEach(field => {
+        colKeysArray.forEach(colKey => {
+          let total = 0;
+          rowKeysArray.forEach(rKey => {
+            total += parseFloat(getAggregatedValue(rKey, colKey, field)) || 0;
+          });
+          colGrandTotal[`${colKey} - ${field}`] = total.toFixed(2);
+        });
+      });
+      result.push(colGrandTotal);
+
+      // Calculate Row Grand Totals and Overall Grand Total
+      const overallGrandTotal = {};
+      valueFields.forEach(field => {
+        overallGrandTotal[field] = 0;
+      });
+
+      result.forEach(row => {
+        if (row[rowFields.join(' | ')] !== 'Grand Total') {
+          valueFields.forEach(field => {
+            let rowTotal = 0;
+            colKeysArray.forEach(colKey => {
+              const cellValue = parseFloat(row[`${colKey} - ${field}`]) || 0;
+              rowTotal += cellValue;
+              overallGrandTotal[field] += cellValue;
+            });
+            row[`Grand Total - ${field}`] = rowTotal.toFixed(2);
           });
         }
+      });
 
-      }
-      // Case 2: Only Row fields selected
-      else if (rowFields.length > 0 && valueFields.length > 0) {
-        rowKeysArray.forEach(rowKey => {
-          const rowData = { [rowFields.join(' | ')]: rowKey };
-          valueFields.forEach(field => {
-            let total = 0;
-            // When only row fields are present, aggregate across all original data points for that row key
-            const relevantData = data.filter(item => rowFields.map(f => item[f]).join(' | ') === rowKey);
-            relevantData.forEach(item => {
-                 const fieldValue = parseFloat(item[field]) || 0;
-                 total += fieldValue;
-            });
-
-            if (aggregationType === 'Average' && relevantData.length > 0) {
-                rowData[field] = (total / relevantData.length).toFixed(2);
-            } else if (aggregationType === 'Count') {
-                 rowData[field] = relevantData.length.toFixed(2);
-            }
-             else {
-                rowData[field] = total.toFixed(2);
-            }
-          });
-          result.push(rowData);
+      // Update the Grand Total row with the overall grand total
+      if (result.length > 0 && result[result.length - 1][rowFields.join(' | ')] === 'Grand Total') {
+        valueFields.forEach(field => {
+          result[result.length - 1][`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
         });
+      }
 
-        // Add Grand Total Row for only row fields
-        const grandTotalRow = { [rowFields.join(' | ')]: 'Grand Total' };
+    }
+    // Case 2: Only Row fields selected
+    else if (rowFields.length > 0 && columnFields.length === 0 && valueFields.length > 0) {
+      rowKeysArray.forEach(rowKey => {
+        const rowData = { [rowFields.join(' | ')]: rowKey };
         valueFields.forEach(field => {
           let total = 0;
-           data.forEach(item => {
-             const fieldValue = parseFloat(item[field]) || 0;
-             total += fieldValue;
-           });
-           if (aggregationType === 'Average' && data.length > 0) {
-               grandTotalRow[field] = (total / data.length).toFixed(2);
-           } else if (aggregationType === 'Count') {
-               grandTotalRow[field] = data.length.toFixed(2);
-           } else {
-               grandTotalRow[field] = total.toFixed(2);
-           }
-        });
-        result.push(grandTotalRow);
-      }
-      // Case 3: Only Column fields selected
-      else if (columnFields.length > 0 && valueFields.length > 0) {
-        colKeysArray.forEach(colKey => {
-          const rowData = { [columnFields.join(' | ')]: colKey };
-          valueFields.forEach(field => {
-            let total = 0;
-            // When only column fields are present, aggregate across all original data points for that column key
-             const relevantData = data.filter(item => columnFields.map(f => item[f]).join(' | ') === colKey);
-             relevantData.forEach(item => {
-                 const fieldValue = parseFloat(item[field]) || 0;
-                 total += fieldValue;
-             });
-
-             if (aggregationType === 'Average' && relevantData.length > 0) {
-                 rowData[field] = (total / relevantData.length).toFixed(2);
-             } else if (aggregationType === 'Count') {
-                 rowData[field] = relevantData.length.toFixed(2);
-             }
-             else {
-                 rowData[field] = total.toFixed(2);
-             }
+          // Aggregate across all original data points for that row key
+          const relevantData = data.filter(item => rowFields.map(f => item[f]).join(' | ') === rowKey);
+          relevantData.forEach(item => {
+               const fieldValue = parseFloat(item[field]) || 0;
+               total += fieldValue;
           });
-          result.push(rowData);
-        });
 
-         // Add Grand Total Row for only column fields
-         const grandTotalRow = { [columnFields.join(' | ')]: 'Grand Total' };
-         valueFields.forEach(field => {
-           let total = 0;
-           data.forEach(item => {
-             const fieldValue = parseFloat(item[field]) || 0;
-             total += fieldValue;
-           });
-           if (aggregationType === 'Average' && data.length > 0) {
-               grandTotalRow[field] = (total / data.length).toFixed(2);
-           } else if (aggregationType === 'Count') {
-               grandTotalRow[field] = data.length.toFixed(2);
-           } else {
-               grandTotalRow[field] = total.toFixed(2);
-           }
+          if (aggregationType === 'Average' && relevantData.length > 0) {
+              rowData[field] = (total / relevantData.length).toFixed(2);
+          } else if (aggregationType === 'Count') {
+               rowData[field] = relevantData.length; // Count should be integer
+          }
+           else {
+              rowData[field] = total.toFixed(2);
+          }
+        });
+        result.push(rowData);
+      });
+
+      // Add Grand Total Row for only row fields
+      const grandTotalRow = { [rowFields.join(' | ')]: 'Grand Total' };
+      valueFields.forEach(field => {
+        let total = 0;
+         data.forEach(item => {
+           const fieldValue = parseFloat(item[field]) || 0;
+           total += fieldValue;
          });
-         result.push(grandTotalRow);
-      }
+         if (aggregationType === 'Average' && data.length > 0) {
+             grandTotalRow[field] = (total / data.length).toFixed(2);
+         } else if (aggregationType === 'Count') {
+             grandTotalRow[field] = data.length; // Count should be integer
+         } else {
+             grandTotalRow[field] = total.toFixed(2);
+         }
+      });
+      result.push(grandTotalRow);
+    }
+    // Case 3: Only Column fields selected
+    else if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
+      const rowData = { [columnFields.join(' | ')]: "" }; // Header row for column fields
+      colKeysArray.forEach(colKey => {
+        valueFields.forEach(field => {
+           rowData[`${colKey} - ${field}`] = ''; // Placeholder for data cells
+        });
+      });
+       result.push(rowData); // Add header row first
+
+
+      colKeysArray.forEach(colKey => {
+        const rowData = { [columnFields.join(' | ')]: colKey };
+        valueFields.forEach(field => {
+          let total = 0;
+          // Aggregate across all original data points for that column key
+           const relevantData = data.filter(item => columnFields.map(f => item[f]).join(' | ') === colKey);
+           relevantData.forEach(item => {
+               const fieldValue = parseFloat(item[field]) || 0;
+               total += fieldValue;
+           });
+
+           if (aggregationType === 'Average' && relevantData.length > 0) {
+               rowData[`${colKey} - ${field}`] = (total / relevantData.length).toFixed(2);
+           } else if (aggregationType === 'Count') {
+               rowData[`${colKey} - ${field}`] = relevantData.length; // Count should be integer
+           }
+           else {
+               rowData[`${colKey} - ${field}`] = total.toFixed(2);
+           }
+        });
+        result.push(rowData);
+      });
+
+       // Add Grand Total Row for only column fields
+       const grandTotalRow = { [columnFields.join(' | ')]: 'Grand Total' };
+       valueFields.forEach(field => {
+         let total = 0;
+         data.forEach(item => {
+           const fieldValue = parseFloat(item[field]) || 0;
+           total += fieldValue;
+         });
+         if (aggregationType === 'Average' && data.length > 0) {
+             grandTotalRow[`Grand Total - ${field}`] = (total / data.length).toFixed(2);
+         } else if (aggregationType === 'Count') {
+             grandTotalRow[`Grand Total - ${field}`] = data.length; // Count should be integer
+         } else {
+             grandTotalRow[`Grand Total - ${field}`] = total.toFixed(2);
+         }
+       });
+       result.push(grandTotalRow);
+
     }
     // Case 4: Only Value fields selected (display a single row with aggregated values)
-     else if (valueFields.length > 0) {
+     else if (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0) {
         const rowData = { "Grand Total": "Grand Total" }; // Placeholder for clarity
         valueFields.forEach(field => {
             let total = 0;
@@ -307,7 +316,7 @@ const GeneratingFields = () => {
             if (aggregationType === 'Average' && data.length > 0) {
                 rowData[field] = (total / data.length).toFixed(2);
             } else if (aggregationType === 'Count') {
-                 rowData[field] = data.length.toFixed(2);
+                 rowData[field] = data.length; // Count should be integer
             }
             else {
                 rowData[field] = total.toFixed(2);
@@ -335,37 +344,32 @@ const GeneratingFields = () => {
 
   const getTableHeader = (rowFields, colKeysArray, valueFields, columnFields) => {
     const headers = [];
-    if (rowFields.length > 0) {
-      headers.push(rowFields.join(' | '));
-    } else if (columnFields.length > 0) {
-      headers.push(columnFields.join(' | '));
-    } else if (valueFields.length > 0 && rowFields.length === 0 && columnFields.length === 0) {
-       headers.push("Grand Total"); // Header for the single row in value-only case
-    }
-
-
-    if (colKeysArray.length === 0 && valueFields.length > 0 && rowFields.length > 0) {
-      valueFields.forEach(v => headers.push(v));
-    } else if (colKeysArray.length > 0) {
-      colKeysArray.forEach(ck => {
-        valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
-      });
-    } else if (rowFields.length === 0 && columnFields.length > 0 && valueFields.length > 0) {
-      valueFields.forEach(v => headers.push(v));
-    } else if (rowFields.length > 0 && columnFields.length === 0 && valueFields.length > 0) {
-       valueFields.forEach(v => headers.push(v));
-    }
-     else if (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0) {
-         valueFields.forEach(v => headers.push(v));
-     }
-
-
 
     if (rowFields.length > 0 && columnFields.length > 0) {
-      valueFields.forEach(field => {
-        headers.push(`Grand Total - ${field}`);
-      });
+        headers.push(rowFields.join(' | '));
+         colKeysArray.forEach(ck => {
+            valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
+          });
+         valueFields.forEach(field => {
+           headers.push(`Grand Total - ${field}`);
+         });
+    } else if (rowFields.length > 0 && columnFields.length === 0 && valueFields.length > 0) {
+        headers.push(rowFields.join(' | '));
+        valueFields.forEach(v => headers.push(v));
+    } else if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
+        headers.push(columnFields.join(' | ')); // Header for the column keys
+         colKeysArray.forEach(ck => {
+            valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
+          });
+         valueFields.forEach(field => {
+             headers.push(`Grand Total - ${field}`); // Grand Total for each value field
+         })
+    } else if (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0) {
+       headers.push("Grand Total"); // Header for the single row in value-only case
+       valueFields.forEach(v => headers.push(v));
     }
+
+
     return headers;
   }
 
@@ -390,6 +394,14 @@ const GeneratingFields = () => {
                  return <div style={styles.placeholderMessage}>No data to display for the selected fields.</div>;
                }
 
+              // Adjust result structure for column-only case before rendering
+               let displayResult = result;
+               if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
+                   // The first row is the header row created in aggregateData
+                   // The subsequent rows are the data rows
+                    displayResult = result.slice(1);
+               }
+
 
               return (
                 <table style={styles.pivotTable} ref={pivotTableRef}>
@@ -403,7 +415,7 @@ const GeneratingFields = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {result.map((row, index) => {
+                    {displayResult.map((row, index) => {
                       const isGrandTotalRow = (rowFields.length > 0 && row[rowFields.join(' | ')] === 'Grand Total') ||
                                               (columnFields.length > 0 && row[columnFields.join(' | ')] === 'Grand Total') ||
                                               (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0 && row["Grand Total"] === "Grand Total");
@@ -412,7 +424,20 @@ const GeneratingFields = () => {
                       return (
                         <tr key={index} style={rowStyle}>
                           {tableHeader.map((header, cellIndex) => { // Use tableHeader to iterate through cells
-                             const cellValue = row[header]; // Access cell value using the header
+                             // For column-only case, the first column header is the combined column field name
+                             // and the value is the column key for data rows, or 'Grand Total' for the total row.
+                              let cellValue;
+                              if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
+                                   if (cellIndex === 0) {
+                                       cellValue = row[columnFields.join(' | ')];
+                                   } else {
+                                        cellValue = row[header];
+                                   }
+                              } else {
+                                  cellValue = row[header]; // Access cell value using the header for other cases
+                              }
+
+
                             const isGrandTotalCell = isGrandTotalRow || (header && header.startsWith('Grand Total'));
                             const cellStyle = isGrandTotalCell ? styles.tableCellGrand : styles.tableCell;
                             return (
@@ -538,7 +563,7 @@ const styles = {
   },
   removeButton: {
     background: "red",
-    color: "#000080", // Changed to a more visible color
+    color: "white", // Changed to white for better visibility on red background
     border: "none",
     borderRadius: "12px",
     padding: "2px 6px",
