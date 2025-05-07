@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { utils, writeFile } from 'xlsx';
 
 const GeneratingFields = () => {
   const { state } = useLocation();
@@ -12,6 +13,7 @@ const GeneratingFields = () => {
   const [selectedColumn, setSelectedColumn] = useState("");
   const [selectedValue, setSelectedValue] = useState("");
   const [aggregationType, setAggregationType] = useState("Sum");
+  const pivotTableRef = useRef(null);
 
   if (!fullData || fullData.length < 2) {
     return <div>No data received</div>;
@@ -227,10 +229,18 @@ const GeneratingFields = () => {
     };
   };
 
+  const downloadExcel = () => {
+    if (!pivotTableRef.current) return;
+
+    const wb = utils.book_new();
+    const ws = utils.table_to_sheet(pivotTableRef.current);
+    utils.book_append_sheet(wb, ws, "Pivot Table");
+    writeFile(wb, "pivot_table.xlsx");
+  };
 
   const renderHierarchicalPivotTable = (aggregatedData, rowFields) => {
     const { pivotTree, colKeys, colTotals, grandTotal } = aggregatedData;
-    if (!aggregatedData || !aggregatedData.colKeys) return null;
+    if (!aggregatedData) return null;
 
     if (!colKeys || colKeys.length === 0) {
       return (
@@ -241,7 +251,7 @@ const GeneratingFields = () => {
     }
 
     return (
-      <table style={styles.pivotTable}>
+      <table style={styles.pivotTable} ref={pivotTableRef}>
         <thead>
           <tr>
             <th style={styles.tableHeader}>
@@ -299,16 +309,21 @@ const GeneratingFields = () => {
       <div style={styles.pivotContainer}>
         <h2 style={styles.pivotTablePlaceholder}>PIVOT TABLE ({aggregationType})</h2>
         {showTable ? (
-          (() => {
-            const aggregated = aggregateHierarchicalData(
-              structuredData,
-              rowFields,
-              columnFields,
-              valueFields,
-              aggregationType
-            );
-            return renderHierarchicalPivotTable(aggregated, rowFields);
-          })()
+          <>
+            {(() => {
+              const aggregated = aggregateHierarchicalData(
+                structuredData,
+                rowFields,
+                columnFields,
+                valueFields,
+                aggregationType
+              );
+              return renderHierarchicalPivotTable(aggregated, rowFields);
+            })()}
+            <button style={styles.downloadButton} onClick={downloadExcel}>
+              Download as Excel
+            </button>
+          </>
         ) : (
           <div style={styles.placeholderMessage}>
             <h2 style={styles.placeholderMessage}>
@@ -365,6 +380,7 @@ const styles = {
     padding: "20px",
     overflow: "auto",
     backgroundColor: "#fff",
+    position: "relative", // For positioning the download button
   },
   pivotTablePlaceholder: {
     textAlign: "center",
@@ -474,6 +490,16 @@ const styles = {
   },
   aggregationSection: {
     marginTop: "15px",
+  },
+  downloadButton: {
+    backgroundColor: "#4CAF50",
+    color: "white",
+    padding: "10px 15px",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontSize: "14px",
+    marginTop: "20px",
   },
 };
 
