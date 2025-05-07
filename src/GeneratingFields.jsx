@@ -55,7 +55,7 @@ const GeneratingFields = () => {
     currentFields,
     includeAggregation = false,
     aggregationTypeState = "",
-    setAggregationTypeFn = () => {}
+    setAggregationTypeFn = () => { }
   ) => (
     <div style={styles.dropdownSection}>
       <label style={styles.label}>{label}</label>
@@ -163,8 +163,8 @@ const GeneratingFields = () => {
 
         // Add Column Grand Totals Row
         const colGrandTotal = { [rowFields.join(' | ')]: 'Grand Total' };
-        colKeysArray.forEach(colKey => {
-          valueFields.forEach(field => {
+        valueFields.forEach(field => { // Iterate over value fields
+          colKeysArray.forEach(colKey => {
             let total = 0;
             rowKeysArray.forEach(rKey => {
               total += parseFloat(getAggregatedValue(rKey, colKey, field)) || 0;
@@ -178,32 +178,37 @@ const GeneratingFields = () => {
         const rowGrandTotal = {};
         const overallGrandTotal = {};  // To store the sum of all values
         valueFields.forEach(field => {
-          rowGrandTotal[field] = 0; // Initialize row grand totals for each value field
+          rowGrandTotal[`Grand Total - ${field}`] = 0; // Initialize row grand totals for each value field
           overallGrandTotal[field] = 0;
         });
 
         result.forEach(row => {
-          if (row[rowFields.join(' | ')] !== 'Grand Total') { // Exclude the column grand total row.
+          if (row[rowFields.join(' | ')] !== 'Grand Total') {
             valueFields.forEach(field => {
               let rowTotal = 0;
               colKeysArray.forEach(colKey => {
                 const cellValue = parseFloat(row[`${colKey} - ${field}`]) || 0;
                 rowTotal += cellValue;
-                overallGrandTotal[field] += cellValue; // Accumulate for overall grand total
+                overallGrandTotal[field] += cellValue;
               });
-              row[`Grand Total`] = rowTotal.toFixed(2);
-              rowGrandTotal[field] += rowTotal; // Accumulate row totals
+              row[`Grand Total - ${field}`] = rowTotal.toFixed(2);
+              rowGrandTotal[`Grand Total - ${field}`] += rowTotal;
             });
           }
         });
+
         //add grand total for the row grand total
-        if (result.length > 0 && result[result.length-1][rowFields.join(' | ')] === 'Grand Total'){
-          valueFields.forEach(field=>{
-            result[result.length-1][`Grand Total`] =  overallGrandTotal[field].toFixed(2);
+        if (result.length > 0 && result[result.length - 1][rowFields.join(' | ')] === 'Grand Total') {
+          valueFields.forEach(field => {
+            result[result.length - 1][`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
           })
         }
-        else{
-          result.push({[rowFields.join(' | ')]: 'Grand Total', ...rowGrandTotal, ['Grand Total']: Object.values(overallGrandTotal).reduce((a,b)=>a+b,0).toFixed(2)});
+        else {
+          const grandTotalRow = { [rowFields.join(' | ')]: 'Grand Total' };
+          valueFields.forEach(field => {
+            grandTotalRow[`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
+          });
+          result.push(grandTotalRow);
         }
       }
       else if (rowFields.length > 0) {
@@ -260,7 +265,9 @@ const GeneratingFields = () => {
       valueFields.forEach(v => headers.push(v));
     }
     if (rowFields.length > 0 && columnFields.length > 0) {
-      headers.push('Grand Total');
+      valueFields.forEach(field => {
+        headers.push(`Grand Total - ${field}`);
+      });
     }
     return headers;
   }
@@ -298,7 +305,7 @@ const GeneratingFields = () => {
                       return (
                         <tr key={index} style={rowStyle}>
                           {tableHeader.map((header, hIndex) => {
-                            const isGrandTotalCell = isGrandTotalRow || header === 'Grand Total';
+                            const isGrandTotalCell = isGrandTotalRow || header.startsWith('Grand Total');
                             const cellStyle = isGrandTotalCell ? styles.tableCellGrand : styles.tableCell;
                             return (
                               <td key={`${header}-${index}`} style={cellStyle}>
@@ -497,4 +504,3 @@ const styles = {
 };
 
 export default GeneratingFields;
-
