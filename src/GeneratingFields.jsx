@@ -8,11 +8,11 @@ const GeneratingFields = () => {
 
   const [rowFields, setRowFields] = useState([]);
   const [columnFields, setColumnFields] = useState([]);
-  const [valueFields, setValueFields] = useState([]);
+  const [valueFields, setValueFields] = useState([]); // Array of { field: string, aggregation: string }
   const [selectedRow, setSelectedRow] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("");
   const [selectedValue, setSelectedValue] = useState("");
-  const [aggregationType, setAggregationType] = useState("Sum");
+  const [defaultAggregationType, setDefaultAggregationType] = useState("Sum"); // Default aggregation for new value fields
   const pivotTableRef = useRef(null);
 
   // Handle case where data is not available or insufficient
@@ -29,34 +29,51 @@ const GeneratingFields = () => {
     }, {})
   );
 
+  // Helper function to add a field to the selected fields list
   const addField = (setFieldFn, currentFields, field) => {
-    if (field && !currentFields.includes(field)) {
-      setFieldFn([...currentFields, field]);
+    if (!field) return;
+
+    if (setFieldFn === setValueFields) {
+      // For value fields, add an object { field, aggregation }
+      // Only add if the field name isn't already in the list
+      if (!currentFields.some(item => item.field === field)) {
+         setFieldFn([...currentFields, { field: field, aggregation: defaultAggregationType }]);
+         setSelectedValue(""); // Reset selected value dropdown after adding
+      }
+    } else {
+      // For row/column fields, add just the field name string
+      if (!currentFields.includes(field)) {
+        setFieldFn([...currentFields, field]);
+      }
     }
   };
 
-  const removeField = (field, setFieldFn, currentFields) => {
-    setFieldFn(currentFields.filter((f) => f !== field));
-    // Reset the corresponding 'selected' state
-    if (setFieldFn === setRowFields) {
-      setSelectedRow("");
-    } else if (setFieldFn === setColumnFields) {
-      setSelectedColumn("");
-    } else if (setFieldFn === setValueFields) {
-      setSelectedValue("");
+  // Helper function to remove a field from the selected fields list
+  const removeField = (fieldToRemove, setFieldFn, currentFields) => {
+    if (setFieldFn === setValueFields) {
+       // Filter value fields by the field name
+       setFieldFn(currentFields.filter((item) => item.field !== fieldToRemove));
+    } else {
+       // Filter row/column fields by the field name string
+       setFieldFn(currentFields.filter((f) => f !== fieldToRemove));
     }
+    // Reset the corresponding 'selected' state (optional, but good practice)
+    if (setFieldFn === setRowFields) setSelectedRow("");
+    else if (setFieldFn === setColumnFields) setSelectedColumn("");
+    else if (setFieldFn === setValueFields) setSelectedValue("");
   };
 
+  // Renders the dropdowns and selected fields lists for Row, Column, and Value fields
   const renderFieldDropdown = (
     label,
     options,
     selected,
     setSelected,
     setFieldFn,
-    currentFields,
+    currentFields, // currentFields is [{field, aggregation}] for values, string[] for others
     includeAggregation = false,
-    aggregationTypeState = "",
-    setAggregationTypeFn = () => { }
+    aggregationTypeState = "", // This is defaultAggregationType for value fields
+    setAggregationTypeFn = () => { } // This is setDefaultAggregationType for value fields
   ) => (
     <div style={styles.dropdownSection}>
       <label style={styles.label}>{label}</label>
@@ -65,394 +82,544 @@ const GeneratingFields = () => {
         value={selected || ""}
         onChange={(e) => {
           const field = e.target.value;
-          setSelected(field); // Update the selected field
-          addField(setFieldFn, currentFields, field); // Add the selected field to the list
+          setSelected(field); // Update the selected field in dropdown
+          // Add the selected field (with default aggregation for values)
+          addField(setFieldFn, currentFields, field);
         }}
       >
         <option value="" disabled>
           Add a field
         </option>
+        {/* Filter out fields that are already in the currentFields list */}
         {options
-          .filter(field => !currentFields.includes(field)) // Filter out already selected fields
+          .filter(field => setFieldFn === setValueFields ? !currentFields.some(item => item.field === field) : !currentFields.includes(field))
           .map((field) => (
             <option key={field} value={field}>
               {field}
             </option>
           ))}
       </select>
-      <div style={styles.selectedFieldsContainer}>
-        {currentFields.map((field) => (
-          <div key={field} style={styles.selectedField}>
-            {field}
-            <button
-              onClick={() => removeField(field, setFieldFn, currentFields)}
-              style={styles.removeButton}
-            >
-              X
-            </button>
-          </div>
-        ))}
-      </div>
+
+      {/* Display default aggregation selector only for Value Fields dropdown */}
       {includeAggregation && (
-        <div style={styles.aggregationSection}>
-          <label style={styles.label}>Aggregate values using</label>
-          <select
-            style={styles.select}
-            value={aggregationTypeState}
-            onChange={(e) => setAggregationTypeFn(e.target.value)}
-          >
-            <option value="Sum">Sum</option>
-            <option value="Average">Average</option>
-            <option value="Count">Count</option>
-          </select>
-        </div>
-      )}
+         <div style={styles.aggregationSection}>
+           <label style={styles.label}>Default aggregation for new fields</label>
+           <select
+             style={styles.select}
+             value={aggregationTypeState}
+             onChange={(e) => setAggregationTypeFn(e.target.value)}
+           >
+             <option value="Sum">Sum</option>
+             <option value="Average">Average</option>
+             <option value="Count">Count</option>
+           </select>
+         </div>
+       )}
+
+      <div style={styles.selectedFieldsContainer}>
+        {/* Map through currentFields - handles both string array and array of objects */}
+        {currentFields.map((item) => {
+          const fieldName = setFieldFn === setValueFields ? item.field : item; // Get field name
+          const currentAggregation = setFieldFn === setValueFields ? item.aggregation : null; // Get aggregation for value fields
+
+          return (
+            <div key={fieldName} style={styles.selectedField}>
+              {fieldName}
+              {/* Show aggregation and dropdown only for Value Fields */}
+              {setFieldFn === setValueFields && (
+                 <>
+                   ({currentAggregation})
+                   <select
+                     style={{...styles.select, width: 'unset', marginLeft: '10px', padding: '2px', height: '25px', fontSize: '12px'}} // Adjust style
+                     value={currentAggregation}
+                     onChange={(e) => {
+                       const newAggregation = e.target.value;
+                       // Update the aggregation for this specific field in the state
+                       setValueFields(valueFields.map(valField =>
+                         valField.field === fieldName ? { ...valField, aggregation: newAggregation } : valField
+                       ));
+                     }}
+                   >
+                     <option value="Sum">Sum</option>
+                     <option value="Average">Average</option>
+                     <option value="Count">Count</option>
+                   </select>
+                 </>
+               )}
+              <button
+                onClick={() => removeField(fieldName, setFieldFn, currentFields)}
+                style={styles.removeButton}
+              >
+                X
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 
-  const aggregateData = (data, rowFields, columnFields, valueFields, aggregationType) => {
-    const rowKeys = new Set();
-    const colKeys = new Set();
-    const dataMap = {};
-    const result = [];
+  // Aggregates data based on selected row, column, and value fields
+  const aggregateData = (data, rowFields, columnFields, valueFields) => {
+    const dataMap = {}; // Stores aggregated data per cell (combination of row keys and column keys)
 
+    // Populate dataMap with sums and counts for each value field in each cell
     data.forEach(item => {
-      const rowKey = rowFields.length > 0 ? rowFields.map(field => item[field]).join(' | ') : 'Grand Total'; // Use 'Grand Total' if no row fields
-      const colKey = columnFields.length > 0 ? columnFields.map(field => item[field]).join(' | ') : 'Grand Total'; // Use 'Grand Total' if no column fields
-
-
-      rowKeys.add(rowKey);
-      colKeys.add(colKey);
+      const rowKey = rowFields.length > 0 ? rowFields.map(field => item[field]).join(' | ') : 'Grand Total';
+      const colKey = columnFields.length > 0 ? columnFields.map(field => item[field]).join(' | ') : 'Grand Total';
 
       if (!dataMap[rowKey]) dataMap[rowKey] = {};
-      if (!dataMap[rowKey][colKey]) dataMap[rowKey][colKey] = { count: 0 }; // Store count for averages
+      if (!dataMap[rowKey][colKey]) dataMap[rowKey][colKey] = {};
 
-      valueFields.forEach(field => {
+      valueFields.forEach(({ field }) => { // Iterate through value fields
         const fieldValue = parseFloat(item[field]) || 0;
-        dataMap[rowKey][colKey][field] = (dataMap[rowKey][colKey][field] || 0) + fieldValue;
-        dataMap[rowKey][colKey].count++; // Increment count for each row contributing to this cell
+        if (!dataMap[rowKey][colKey][field]) {
+          dataMap[rowKey][colKey][field] = { sum: 0, count: 0 };
+        }
+        dataMap[rowKey][colKey][field].sum += fieldValue;
+        dataMap[rowKey][colKey][field].count++;
       });
     });
 
-    const rowKeysArray = Array.from(rowKeys).filter(key => key !== ''); // Filter out empty keys
-    const colKeysArray = Array.from(colKeys).filter(key => key !== ''); // Filter out empty keys
-
-
-    // Function to get aggregated value
-    const getAggregatedValue = (rowKey, colKey, field) => {
-      const values = dataMap[rowKey]?.[colKey] || {};
-      let aggregatedValue = values[field] || 0;
-
-      if (aggregationType === 'Average') {
-        // Calculate average based on the count of contributing rows for this cell
-        const count = values.count || 0;
-        aggregatedValue = count > 0 ? aggregatedValue / count : 0;
-      } else if (aggregationType === 'Count') {
-        // Count refers to the number of rows that contribute to this cell
-        aggregatedValue = values.count || 0;
-      }
-      return aggregatedValue.toFixed(2);
-    };
-
-    // Create the result array
-    if (rowFields.length > 0 && columnFields.length > 0) {
-      // Case 1: Row and Column fields selected
-      rowKeysArray.forEach(rowKey => {
-        const rowData = { [rowFields.join(' | ')]: rowKey };
-        colKeysArray.forEach(colKey => {
-          valueFields.forEach(field => {
-            rowData[`${colKey} - ${field}`] = getAggregatedValue(rowKey, colKey, field);
-          });
-        });
-        result.push(rowData);
-      });
-
-      // Add Column Grand Totals Row
-      const colGrandTotal = { [rowFields.join(' | ')]: 'Grand Total' };
-      valueFields.forEach(field => {
-        colKeysArray.forEach(colKey => {
-          let total = 0;
-          rowKeysArray.forEach(rKey => {
-            total += parseFloat(getAggregatedValue(rKey, colKey, field)) || 0;
-          });
-          colGrandTotal[`${colKey} - ${field}`] = total.toFixed(2);
-        });
-      });
-      result.push(colGrandTotal);
-
-      // Calculate Row Grand Totals and Overall Grand Total
-      const overallGrandTotal = {};
-      valueFields.forEach(field => {
-        overallGrandTotal[field] = 0;
-      });
-
-      result.forEach(row => {
-        if (row[rowFields.join(' | ')] !== 'Grand Total') {
-          valueFields.forEach(field => {
-            let rowTotal = 0;
-            colKeysArray.forEach(colKey => {
-              const cellValue = parseFloat(row[`${colKey} - ${field}`]) || 0;
-              rowTotal += cellValue;
-              overallGrandTotal[field] += cellValue;
-            });
-            row[`Grand Total - ${field}`] = rowTotal.toFixed(2);
-          });
+     // Helper function to get aggregated value based on sum, count, and aggregation type
+     const getAggregatedValue = (sum, count, aggregation) => {
+        if (aggregation === 'Average') {
+            return count > 0 ? (sum / count).toFixed(2) : '0.00';
+        } else if (aggregation === 'Count') {
+            return count; // Count is usually an integer
         }
-      });
+        return sum.toFixed(2); // Default is Sum
+     };
 
-      // Update the Grand Total row with the overall grand total
-      if (result.length > 0 && result[result.length - 1][rowFields.join(' | ')] === 'Grand Total') {
-        valueFields.forEach(field => {
-          result[result.length - 1][`Grand Total - ${field}`] = overallGrandTotal[field].toFixed(2);
-        });
-      }
+     const result = [];
 
-    }
-    // Case 2: Only Row fields selected
-    else if (rowFields.length > 0 && columnFields.length === 0 && valueFields.length > 0) {
-      rowKeysArray.forEach(rowKey => {
-        const rowData = { [rowFields.join(' | ')]: rowKey };
-        valueFields.forEach(field => {
-          let total = 0;
-          // Aggregate across all original data points for that row key
-          const relevantData = data.filter(item => rowFields.map(f => item[f]).join(' | ') === rowKey);
-          relevantData.forEach(item => {
-               const fieldValue = parseFloat(item[field]) || 0;
-               total += fieldValue;
-          });
-
-          if (aggregationType === 'Average' && relevantData.length > 0) {
-              rowData[field] = (total / relevantData.length).toFixed(2);
-          } else if (aggregationType === 'Count') {
-               rowData[field] = relevantData.length; // Count should be integer
-          }
-           else {
-              rowData[field] = total.toFixed(2);
-          }
-        });
-        result.push(rowData);
-      });
-
-      // Add Grand Total Row for only row fields
-      const grandTotalRow = { [rowFields.join(' | ')]: 'Grand Total' };
-      valueFields.forEach(field => {
-        let total = 0;
-         data.forEach(item => {
-           const fieldValue = parseFloat(item[field]) || 0;
-           total += fieldValue;
-         });
-         if (aggregationType === 'Average' && data.length > 0) {
-             grandTotalRow[field] = (total / data.length).toFixed(2);
-         } else if (aggregationType === 'Count') {
-             grandTotalRow[field] = data.length; // Count should be integer
-         } else {
-             grandTotalRow[field] = total.toFixed(2);
-         }
-      });
-      result.push(grandTotalRow);
-    }
-    // Case 3: Only Column fields selected
-    else if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
-      const rowData = { [columnFields.join(' | ')]: "" }; // Header row for column fields
-      colKeysArray.forEach(colKey => {
-        valueFields.forEach(field => {
-           rowData[`${colKey} - ${field}`] = ''; // Placeholder for data cells
-        });
-      });
-       result.push(rowData); // Add header row first
+     // Get unique row and column key combinations from the dataMap for iterating
+     const uniqueRowKeys = Object.keys(dataMap).filter(key => key !== 'Grand Total').sort();
+     const uniqueColKeys = Array.from(new Set(Object.values(dataMap).flatMap(row => Object.keys(row)))).filter(key => key !== 'Grand Total').sort();
 
 
-      colKeysArray.forEach(colKey => {
-        const rowData = { [columnFields.join(' | ')]: colKey };
-        valueFields.forEach(field => {
-          let total = 0;
-          // Aggregate across all original data points for that column key
-           const relevantData = data.filter(item => columnFields.map(f => item[f]).join(' | ') === colKey);
-           relevantData.forEach(item => {
-               const fieldValue = parseFloat(item[field]) || 0;
-               total += fieldValue;
+     // Generate data rows based on unique row keys
+     uniqueRowKeys.forEach(rowKey => {
+         const rowData = {};
+
+          // Add row field values to the rowData object using the rowKey parts
+          const rowKeyParts = rowKey.split(' | ');
+           rowFields.forEach((field, index) => {
+               rowData[field] = rowKeyParts[index];
            });
 
-           if (aggregationType === 'Average' && relevantData.length > 0) {
-               rowData[`${colKey} - ${field}`] = (total / relevantData.length).toFixed(2);
-           } else if (aggregationType === 'Count') {
-               rowData[`${colKey} - ${field}`] = relevantData.length; // Count should be integer
-           }
-           else {
-               rowData[`${colKey} - ${field}`] = total.toFixed(2);
-           }
-        });
-        result.push(rowData);
+
+         // Add data cells for each unique column key and value field combination
+          uniqueColKeys.forEach(colKey => {
+              valueFields.forEach(({field, aggregation}) => {
+                   const cellData = dataMap[rowKey]?.[colKey]?.[field] || { sum: 0, count: 0 };
+                   // Use a key format that the rendering logic can match
+                   rowData[`${colKey} - ${field} (${aggregation})`] = getAggregatedValue(cellData.sum, cellData.count, aggregation);
+              });
+          });
+
+           // Add Row Grand Totals (aggregated across columns for each row)
+            valueFields.forEach(({field, aggregation}) => {
+                let rowTotalSum = 0;
+                let rowTotalCount = 0;
+                 uniqueColKeys.forEach(colKey => {
+                     const fieldData = dataMap[rowKey]?.[colKey]?.[field] || { sum: 0, count: 0 };
+                     rowTotalSum += fieldData.sum;
+                     rowTotalCount += fieldData.count;
+                 });
+                 rowData[`Grand Total - ${field} (${aggregation})`] = getAggregatedValue(rowTotalSum, rowTotalCount, aggregation);
+            });
+
+         result.push(rowData);
+     });
+
+
+     // Add Grand Total row
+     const grandTotalRow = {};
+      // Add a flag to easily identify the grand total row during rendering
+      grandTotalRow._isGrandTotal = true;
+
+      // Add the Grand Total label in the first row field column (or a dedicated key if no row fields)
+       if (rowFields.length > 0) {
+           grandTotalRow[rowFields[0]] = 'Grand Total';
+           // Fill other row field columns with empty strings for grand total row to maintain column count
+            rowFields.slice(1).forEach(field => grandTotalRow[field] = '');
+       } else if (columnFields.length > 0 || valueFields.length > 0) {
+            grandTotalRow['Grand Total'] = 'Grand Total'; // Label for the row
+       }
+
+
+      // Calculate and add overall Grand Totals for value fields
+      valueFields.forEach(({ field, aggregation }) => {
+          let overallTotalSum = 0;
+          let overallTotalCount = 0;
+           structuredData.forEach(item => {
+               const fieldValue = parseFloat(item[field]) || 0;
+               overallTotalSum += fieldValue;
+               overallTotalCount++;
+           });
+           const aggregatedValue = getAggregatedValue(overallTotalSum, overallTotalCount, aggregation);
+           // Use a key format that the rendering logic can match for the overall grand total column
+            if (columnFields.length > 0 || rowFields.length > 0) {
+                grandTotalRow[`Grand Total - ${field} (${aggregation})`] = aggregatedValue;
+            } else { // Case with only value fields selected
+                 grandTotalRow[`${field} (${aggregation})`] = aggregatedValue;
+            }
       });
 
-       // Add Grand Total Row for only column fields
-       const grandTotalRow = { [columnFields.join(' | ')]: 'Grand Total' };
-       valueFields.forEach(field => {
-         let total = 0;
-         data.forEach(item => {
-           const fieldValue = parseFloat(item[field]) || 0;
-           total += fieldValue;
-         });
-         if (aggregationType === 'Average' && data.length > 0) {
-             grandTotalRow[`Grand Total - ${field}`] = (total / data.length).toFixed(2);
-         } else if (aggregationType === 'Count') {
-             grandTotalRow[`Grand Total - ${field}`] = data.length; // Count should be integer
-         } else {
-             grandTotalRow[`Grand Total - ${field}`] = total.toFixed(2);
-         }
-       });
-       result.push(grandTotalRow);
-
-    }
-    // Case 4: Only Value fields selected (display a single row with aggregated values)
-     else if (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0) {
-        const rowData = { "Grand Total": "Grand Total" }; // Placeholder for clarity
-        valueFields.forEach(field => {
-            let total = 0;
-            data.forEach(item => {
-                const fieldValue = parseFloat(item[field]) || 0;
-                total += fieldValue;
+       // Add column grand totals to the grandTotalRow
+        uniqueColKeys.forEach(colKey => {
+            valueFields.forEach(({ field, aggregation }) => {
+                let colTotalSum = 0;
+                let colTotalCount = 0;
+                 // Aggregate across data rows for this colKey
+                 uniqueRowKeys.forEach(rowKey => {
+                     const fieldData = dataMap[rowKey]?.[colKey]?.[field] || { sum: 0, count: 0 };
+                     colTotalSum += fieldData.sum;
+                     colTotalCount += fieldData.count;
+                 });
+                 grandTotalRow[`${colKey} - ${field} (${aggregation})`] = getAggregatedValue(colTotalSum, colTotalCount, aggregation);
             });
-            if (aggregationType === 'Average' && data.length > 0) {
-                rowData[field] = (total / data.length).toFixed(2);
-            } else if (aggregationType === 'Count') {
-                 rowData[field] = data.length; // Count should be integer
-            }
-            else {
-                rowData[field] = total.toFixed(2);
-            }
         });
-        result.push(rowData);
-     }
 
 
-    return { result, rowKeysArray, colKeysArray };
+     result.push(grandTotalRow);
+
+
+    return { result, uniqueRowKeys, uniqueColKeys }; // Return unique keys for header generation
   };
+
+
+  // Helper to count lower-level combinations for colspan calculation
+  const getLowerLevelCombinationsCount = (parentColKey, currentLevel, remainingColFields, data, allColumnFields) => {
+       if (remainingColFields.length === 0) return 1; // Base case: one combination (the absence of further fields)
+
+       const nextField = remainingColFields[0];
+       const uniqueValues = Array.from(new Set(data.map(item => {
+            const currentItemKeyParts = allColumnFields.slice(0, currentLevel + 1).map(f => item[f]);
+            const currentItemKey = currentItemKeyParts.join(' | ');
+            return currentItemKey.startsWith(parentColKey) ? item[nextField] : null;
+       }).filter(val => val !== null)));
+
+       let count = 0;
+       uniqueValues.forEach(val => {
+           const nextParentKey = parentColKey ? `${parentColKey} | ${val}` : val;
+            count += getLowerLevelCombinationsCount(nextParentKey, currentLevel + 1, remainingColFields.slice(1), data, allColumnFields);
+       });
+       return count;
+  };
+
+
+  // Generates the multi-level header structure for the table
+  const getTableHeader = (rowFields, columnFields, valueFields, uniqueColKeys, data) => {
+      const headerRows = [];
+
+      // Determine the number of header rows needed based on column field depth and value fields
+       const maxColHeaderLevels = columnFields.length;
+       const totalHeaderLevels = maxColHeaderLevels + (valueFields.length > 0 ? 1 : 0); // Levels for column fields + value fields
+
+
+       // Create empty arrays for each header row level to prevent "push of undefined"
+        for (let i = 0; i < totalHeaderLevels; i++) {
+            headerRows.push([]);
+        }
+
+
+       // Add the top-left cell for row fields (if any)
+       if (rowFields.length > 0) {
+           // The row field header spans all column header rows and the value header row
+           // Ensure headerRows[0] exists before pushing
+            if (headerRows.length > 0) {
+               headerRows[0].push({ text: rowFields.join(' | '), colspan: rowFields.length, rowspan: totalHeaderLevels, type: 'row-fields-header' });
+            }
+       } else if (columnFields.length === 0 && valueFields.length > 0) {
+            // If no row or column fields, the first header is just a label for the single row
+             if (headerRows.length > 0) {
+                headerRows[0].push({ text: 'Grand Total', colspan: 1, rowspan: totalHeaderLevels, type: 'grand-total-label' });
+             }
+       }
+
+
+       // Populate column headers and value headers based on unique column keys
+        if (columnFields.length > 0) {
+            // Recursive helper to populate column headers
+            const populateColHeaders = (currentLevel, parentColKey = '') => {
+                if (currentLevel >= columnFields.length) {
+                    // Base case: reached the level for value headers
+                    return;
+                }
+
+                const field = columnFields[currentLevel];
+                // Get unique values for this field under the parent key from the original data
+                const uniqueValues = Array.from(new Set(data.map(item => {
+                     const currentItemKeyParts = columnFields.slice(0, currentLevel + 1).map(f => item[f]);
+                     const currentItemKey = currentItemKeyParts.join(' | ');
+                     return parentColKey ? (currentItemKey.startsWith(parentColKey + ' | ') ? item[field] : null) : item[field];
+                }).filter(val => val !== null)));
+
+
+                uniqueValues.forEach(val => {
+                     const currentColKey = parentColKey ? `${parentColKey} | ${val}` : val;
+
+                     // Calculate colspan for this header cell
+                     let colspan = 0;
+                     if (currentLevel === columnFields.length - 1) {
+                          // If it's the last level of column fields, colspan is the number of value fields
+                          colspan = valueFields.length || 1;
+                     } else {
+                          // Calculate colspan based on lower-level combinations
+                           const remainingColFields = columnFields.slice(currentLevel + 1);
+                           const lowerLevelCombinations = getLowerLevelCombinationsCount(currentColKey, currentLevel, remainingColFields, data, columnFields) || 1;
+                           colspan = lowerLevelCombinations * (valueFields.length || 1);
+                            if (valueFields.length === 0) colspan = lowerLevelCombinations;
+                     }
+
+
+                      // Add the header cell to the correct row
+                      const headerRowIndex = currentLevel;
+                      // Ensure the target header row exists before pushing
+                       if (headerRows[headerRowIndex]) {
+                          headerRows[headerRowIndex].push({ text: val, colspan: colspan, rowspan: 1, type: 'column-group', level: currentLevel });
+                       }
+
+                     // Recursively populate lower level headers
+                     populateColHeaders(currentLevel + 1, currentColKey);
+                });
+            };
+
+            populateColHeaders(0); // Start building from the first column field
+
+            // Add value field headers below the last column field headers
+             if (valueFields.length > 0) {
+                  const valueHeaderRowIndex = columnFields.length;
+                  // Add value headers under each unique full column key combination
+                   uniqueColKeys.forEach(colKey => {
+                       valueFields.forEach(({ field, aggregation }) => {
+                            // Ensure the target header row exists before pushing
+                             if (headerRows[valueHeaderRowIndex]) {
+                                headerRows[valueHeaderRowIndex].push({ text: `${field} (${aggregation})`, colspan: 1, rowspan: 1, type: 'value' });
+                             }
+                       });
+                   });
+             }
+       } else if (valueFields.length > 0) {
+           // Only value fields selected (no column fields)
+            const valueHeaderRowIndex = 0; // Value headers are in the first row
+             valueFields.forEach(({ field, aggregation }) => {
+                 // Ensure the target header row exists before pushing
+                  if (headerRows[valueHeaderRowIndex]) {
+                     headerRows[valueHeaderRowIndex].push({ text: `${field} (${aggregation})`, colspan: 1, rowspan: 1, type: 'value' });
+                  }
+             });
+       }
+
+
+      // Add Grand Total column header(s)
+       if (valueFields.length > 0 && (rowFields.length > 0 || columnFields.length > 0)) {
+            const grandTotalColspan = valueFields.length;
+            const grandTotalRowspan = totalHeaderLevels - (columnFields.length); // Span remaining header rows below column fields
+
+            // Add to the header row corresponding to the last level of column headers, or the first if no column fields
+             const targetHeaderRowIndex = columnFields.length;
+             // Ensure the target header row exists before pushing
+              if (headerRows[targetHeaderRowIndex]) {
+                  headerRows[targetHeaderRowIndex].push({ text: 'Grand Total', colspan: grandTotalColspan, rowspan: grandTotalRowspan, type: 'grand-total-column' });
+              }
+       }
+
+
+      // Clean up empty header rows that might have been created (less likely with this structured approach)
+       const finalHeaderRows = headerRows.filter(row => row.length > 0);
+
+
+     return finalHeaderRows;
+  };
+
+  // Helper function to determine if a row field cell should be displayed (for rowspan)
+  const shouldDisplayRowField = (data, rowIndex, rowField, allRowFields) => {
+      if (rowIndex < 0 || rowIndex >= data.length) return false;
+      if (rowIndex === 0) return true; // Always display for the first row
+
+      const currentFieldLevel = allRowFields.indexOf(rowField);
+      if (currentFieldLevel === -1) return true; // Should not happen if called correctly
+
+       // Check if the combination of this field's value and all higher-level row fields' values
+       // is different from the previous row's values.
+       const currentGroupValues = allRowFields.slice(0, currentFieldLevel + 1).map(f => data[rowIndex][f]).join('|');
+       const previousGroupValues = allRowFields.slice(0, currentFieldLevel + 1).map(f => data[rowIndex - 1][f]).join('|');
+
+       return currentGroupValues !== previousGroupValues;
+  };
+
+  // Helper function to calculate rowspan for a row field cell
+  const getRowspanForRowField = (data, rowIndex, rowField, allRowFields) => {
+      if (rowIndex < 0 || rowIndex >= data.length) return 1;
+
+       const currentFieldLevel = allRowFields.indexOf(rowField);
+       if (currentFieldLevel === -1) return 1;
+
+       let rowspan = 0;
+       const currentGroupValues = allRowFields.slice(0, currentFieldLevel + 1).map(f => data[rowIndex][f]).join('|');
+
+       for (let i = rowIndex; i < data.length; i++) {
+           const currentRowGroupValues = allRowFields.slice(0, currentFieldLevel + 1).map(f => data[i][f]).join('|');
+            if (currentRowGroupValues === currentGroupValues) {
+                rowspan++;
+            } else {
+                break; // Stop counting when the group changes
+            }
+       }
+       return rowspan > 0 ? rowspan : 1; // Minimum rowspan is 1
+  };
+
+
+  // Call aggregateData and get headers inside the render function
+  const { result, uniqueColKeys } = aggregateData(
+    structuredData,
+    rowFields,
+    columnFields,
+    valueFields
+  );
+  // Pass structuredData to getTableHeader as it's needed for colspan calculations
+  const tableHeader = getTableHeader(rowFields, columnFields, valueFields, uniqueColKeys, structuredData);
+
+
+  const showTable = rowFields.length > 0 || columnFields.length > 0 || valueFields.length > 0;
 
 
   const downloadExcel = () => {
     if (!pivotTableRef.current) return;
 
-    const wb = utils.book_new();
-    const ws = utils.table_to_sheet(pivotTableRef.current);
-    utils.book_append_sheet(wb, ws, "Pivot Table");
-    writeFile(wb, "pivot_table.xlsx");
+    // Use table_to_sheet to convert the HTML table element
+     const wb = utils.book_new();
+     const ws = utils.table_to_sheet(pivotTableRef.current);
+     utils.book_append_sheet(wb, ws, "Pivot Table");
+     writeFile(wb, "pivot_table.xlsx");
   };
-
-  const showTable = rowFields.length > 0 || columnFields.length > 0 || valueFields.length > 0;
-
-
-  const getTableHeader = (rowFields, colKeysArray, valueFields, columnFields) => {
-    const headers = [];
-
-    if (rowFields.length > 0 && columnFields.length > 0) {
-        headers.push(rowFields.join(' | '));
-         colKeysArray.forEach(ck => {
-            valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
-          });
-         valueFields.forEach(field => {
-           headers.push(`Grand Total - ${field}`);
-         });
-    } else if (rowFields.length > 0 && columnFields.length === 0 && valueFields.length > 0) {
-        headers.push(rowFields.join(' | '));
-        valueFields.forEach(v => headers.push(v));
-    } else if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
-        headers.push(columnFields.join(' | ')); // Header for the column keys
-         colKeysArray.forEach(ck => {
-            valueFields.forEach(vf => headers.push(`${ck} - ${vf}`));
-          });
-         valueFields.forEach(field => {
-             headers.push(`Grand Total - ${field}`); // Grand Total for each value field
-         })
-    } else if (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0) {
-       headers.push("Grand Total"); // Header for the single row in value-only case
-       valueFields.forEach(v => headers.push(v));
-    }
-
-
-    return headers;
-  }
 
 
   return (
     <div style={styles.container}>
       <div style={styles.pivotContainer}>
-        <h2 style={styles.pivotTablePlaceholder}>PIVOT TABLE ({aggregationType})</h2>
-        {showTable ? (
+        <h2 style={styles.pivotTablePlaceholder}>PIVOT TABLE</h2>
+        {showTable && valueFields.length > 0 ? ( // Ensure value fields are selected to show the table
           <>
-            {(() => {
-              const { result, rowKeysArray, colKeysArray } = aggregateData(
-                structuredData,
-                rowFields,
-                columnFields,
-                valueFields,
-                aggregationType
-              );
-               const tableHeader = getTableHeader(rowFields, colKeysArray, valueFields, columnFields);
-
-               if (result.length === 0) {
-                 return <div style={styles.placeholderMessage}>No data to display for the selected fields.</div>;
-               }
-
-              // Adjust result structure for column-only case before rendering
-               let displayResult = result;
-               if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
-                   // The first row is the header row created in aggregateData
-                   // The subsequent rows are the data rows
-                    displayResult = result.slice(1);
-               }
-
-
-              return (
-                <table style={styles.pivotTable} ref={pivotTableRef}>
-                  <thead>
-                    <tr>
-                      {tableHeader.map((header, index) => (
-                        <th key={index} style={styles.tableHeader}>
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayResult.map((row, index) => {
-                      const isGrandTotalRow = (rowFields.length > 0 && row[rowFields.join(' | ')] === 'Grand Total') ||
-                                              (columnFields.length > 0 && row[columnFields.join(' | ')] === 'Grand Total') ||
-                                              (rowFields.length === 0 && columnFields.length === 0 && valueFields.length > 0 && row["Grand Total"] === "Grand Total");
+            {result.length === 0 && (rowFields.length > 0 || columnFields.length > 0) ? (
+               <div style={styles.placeholderMessage}>No data to display for the selected fields.</div>
+            ) : (
+               <table style={styles.pivotTable} ref={pivotTableRef}>
+                 <thead>
+                   {/* Render multi-level headers */}
+                   {tableHeader.map((headerRow, rowIndex) => (
+                     <tr key={`header-row-${rowIndex}`}>
+                       {headerRow.map((headerCell, cellIndex) => (
+                         <th
+                           key={`header-cell-${rowIndex}-${cellIndex}`}
+                           style={styles.tableHeader}
+                           colSpan={headerCell.colspan || 1} // Default colspan to 1 if not specified
+                           rowSpan={headerCell.rowspan || 1} // Default rowspan to 1 if not specified
+                         >
+                           {headerCell.text}
+                         </th>
+                       ))}
+                     </tr>
+                   ))}
+                 </thead>
+                 <tbody>
+                   {/* Render table body with nested rows */}
+                   {result.map((row, rowIndex) => {
+                     // Determine row type (data or grand total)
+                      const isGrandTotalRow = row._isGrandTotal === true;
 
                       const rowStyle = isGrandTotalRow ? styles.tableRowGrand : styles.tableRow;
-                      return (
-                        <tr key={index} style={rowStyle}>
-                          {tableHeader.map((header, cellIndex) => { // Use tableHeader to iterate through cells
-                             // For column-only case, the first column header is the combined column field name
-                             // and the value is the column key for data rows, or 'Grand Total' for the total row.
-                              let cellValue;
-                              if (columnFields.length > 0 && rowFields.length === 0 && valueFields.length > 0) {
-                                   if (cellIndex === 0) {
-                                       cellValue = row[columnFields.join(' | ')];
-                                   } else {
-                                        cellValue = row[header];
-                                   }
-                              } else {
-                                  cellValue = row[header]; // Access cell value using the header for other cases
-                              }
+
+                     return (
+                       <tr key={`data-row-${rowIndex}`} style={rowStyle}>
+                         {/* Render row field cells with rowspan */}
+                         {rowFields.map((rowField, rowFieldIndex) => {
+                              // For Grand Total row, render a single cell spanning all row field columns
+                             if (isGrandTotalRow) {
+                                  if (rowFieldIndex === 0) { // Only render the first cell
+                                      return (
+                                           <td key={`row-${rowIndex}-label`} style={styles.tableCellGrand} colSpan={rowFields.length || 1}>
+                                               Grand Total
+                                           </td>
+                                      );
+                                  } else {
+                                      return null; // Other row field cells are spanned
+                                  }
+                             }
+
+                             // For data rows, determine if the cell should be displayed and its rowspan
+                             const displayCell = shouldDisplayRowField(result, rowIndex, rowField, rowFields);
+                             const rowspan = getRowspanForRowField(result, rowIndex, rowField, rowFields);
+
+                             if (displayCell) {
+                                 return (
+                                     <td key={`row-${rowIndex}-field-${rowFieldIndex}`} style={styles.tableCell} rowSpan={rowspan}>
+                                         {row[rowField]}
+                                     </td>
+                                 );
+                             } else {
+                                 return null; // Cell is spanned by the cell above
+                             }
+                         })}
+
+                          {/* Render the single Grand Total label cell if no row fields */}
+                          {!rowFields.length && isGrandTotalRow && (
+                                <td key={`row-${rowIndex}-label`} style={styles.tableCellGrand}>
+                                    Grand Total
+                                </td>
+                          )}
 
 
-                            const isGrandTotalCell = isGrandTotalRow || (header && header.startsWith('Grand Total'));
-                            const cellStyle = isGrandTotalCell ? styles.tableCellGrand : styles.tableCell;
-                            return (
-                              <td key={cellIndex} style={cellStyle}>
-                                {cellValue || ''}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              );
-            })()}
+                         {/* Render data cells, column totals, and overall grand total */}
+                         {/* Iterate through column keys and value fields to get data */}
+                          {uniqueColKeys.map(colKey => (
+                               valueFields.map(valueField => {
+                                    // Key to access the data in the row object
+                                    const dataKey = `${colKey} - ${valueField.field} (${valueField.aggregation})`;
+                                    return (
+                                         <td key={`cell-${rowIndex}-${colKey}-${valueField.field}`} style={isGrandTotalRow ? styles.tableCellGrand : styles.tableCell}>
+                                              {row[dataKey] || '0.00'}
+                                         </td>
+                                    );
+                               })
+                          ))}
+
+                           {/* Render Row Grand Total cells for data rows (already included in uniqueColKeys loop if columnFields > 0) */}
+                           {/* If no column fields, render the value field directly */}
+                           {!columnFields.length && valueFields.length > 0 && !isGrandTotalRow && (
+                                valueFields.map(valueField => {
+                                     const dataKey = `${valueField.field} (${valueField.aggregation})`; // Key for value-only case
+                                      return (
+                                           <td key={`cell-${rowIndex}-${valueField.field}`} style={styles.tableCell}>
+                                               {row[dataKey] || '0.00'}
+                                           </td>
+                                      );
+                                })
+                           )}
+
+
+                            {/* Render Grand Total column cells */}
+                            { valueFields.length > 0 && (rowFields.length > 0 || columnFields.length > 0) && (
+                                 valueFields.map(valueField => {
+                                     const grandTotalDataKey = `Grand Total - ${valueField.field} (${valueField.aggregation})`;
+                                     return (
+                                          <td key={`grand-total-${rowIndex}-${valueField.field}`} style={isGrandTotalRow ? styles.tableCellGrand : styles.tableCell}>
+                                              {row[grandTotalDataKey] || '0.00'}
+                                          </td>
+                                     );
+                                 })
+                            )}
+
+
+                       </tr>
+                     );
+                   })}
+                 </tbody>
+               </table>
+            )}
             <button style={styles.downloadButton} onClick={downloadExcel}>
               Download as Excel
             </button>
@@ -462,7 +629,7 @@ const GeneratingFields = () => {
             <h2 style={styles.placeholderMessage}>
               To Construct a Pivot table
             </h2>
-            Select at least one field in Row or Column and one field in Value.
+            Select at least one field in Value. Selecting fields in Row or Column will provide more detailed analysis.
           </div>
         )}
       </div>
@@ -474,7 +641,7 @@ const GeneratingFields = () => {
           selectedRow,
           setSelectedRow,
           setRowFields,
-          rowFields
+          rowFields // rowFields is array of strings
         )}
         {renderFieldDropdown(
           "Column Fields",
@@ -482,7 +649,7 @@ const GeneratingFields = () => {
           selectedColumn,
           setSelectedColumn,
           setColumnFields,
-          columnFields
+          columnFields // columnFields is array of strings
         )}
         {renderFieldDropdown(
           "Value Fields",
@@ -490,10 +657,10 @@ const GeneratingFields = () => {
           selectedValue,
           setSelectedValue,
           setValueFields,
-          valueFields,
+          valueFields, // valueFields is array of objects {field, aggregation}
           true, // Include aggregation options
-          aggregationType,
-          setAggregationType
+          defaultAggregationType, // Pass default aggregation state
+          setDefaultAggregationType // Pass function to update default aggregation
         )}
       </div>
     </div>
@@ -555,6 +722,7 @@ const styles = {
   selectedField: {
     display: "flex",
     justifyContent: "space-between",
+    alignItems: 'center', // Vertically center items
     backgroundColor: "White",
     padding: "4px 8px",
     borderRadius: "10px",
@@ -563,36 +731,28 @@ const styles = {
   },
   removeButton: {
     background: "red",
-    color: "white", // Changed to white for better visibility on red background
+    color: "white",
     border: "none",
     borderRadius: "12px",
     padding: "2px 6px",
     cursor: "pointer",
     fontSize: "10px",
-    marginLeft: "5px", // Added some margin
+    marginLeft: "5px",
   },
   pivotTable: {
     width: "100%",
     borderCollapse: "collapse",
     backgroundColor: "#fff",
     fontSize: "13px",
-    marginTop: "20px", // Added margin for spacing
+    marginTop: "20px",
   },
   tableHeader: {
-    border: "1px solid #ccc",
-    padding: "8px", // Increased padding
-    backgroundColor: "#f0f0f0",
-    textAlign: "center",
-    fontWeight: "bold",
-    whiteSpace: "nowrap", // Prevent header text wrapping
-  },
-   tableHeaderGrand: { // Merged with tableHeader style as they were identical
     border: "1px solid #ccc",
     padding: "8px",
     backgroundColor: "#f0f0f0",
     textAlign: "center",
     fontWeight: "bold",
-    whiteSpace: "nowrap",
+    whiteSpace: "nowrap", // Prevent header text wrapping
   },
   tableRow: {
     border: "1px solid #ccc",
@@ -600,11 +760,11 @@ const styles = {
   tableRowGrand: {
     border: "1px solid #ccc",
     fontWeight: "bold",
-    backgroundColor: "#f0f0f0", // Added background for grand total row
+    backgroundColor: "#f0f0f0",
   },
   tableCell: {
     border: "1px solid #ccc",
-    padding: "8px", // Increased padding
+    padding: "8px",
     textAlign: "center",
   },
   tableCellGrand: {
@@ -632,7 +792,7 @@ const styles = {
     cursor: "pointer",
     fontSize: "14px",
     marginTop: "20px",
-    alignSelf: "flex-start", // Align button to the left
+    alignSelf: "flex-start",
   },
 };
 
