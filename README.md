@@ -14,3 +14,7 @@ As soon as the file uploads, the user can preview the first five rows to verify 
 The user can create a pivot table by clicking on 'Craft a Pivot Table' button.
 In the fields pane, the user can select the fields under a Row, Column and Values.
 They can also select different aggregations like Sum(default), Average and Count for different values they select from the values field.
+
+## Bonus functionality
+
+The user can even download their pivot table as an excel file by clicking on 'Download as Excel' button.
