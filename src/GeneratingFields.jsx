@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { utils, writeFile } from 'xlsx';
 
@@ -6,28 +6,28 @@ const GeneratingFields = () => {
   const { state } = useLocation();
   const { fullData } = state || {};
 
-  const [rowFields, setRowFields] = useState([]);
-  const [columnFields, setColumnFields] = useState([]);
+  const [rowFields, setRowFields] = useState([]); //Used to store array of row fields selected by user.
+  const [columnFields, setColumnFields] = useState([]); //Used to store array of column fields selected by user.
   const [valueFields, setValueFields] = useState([]); // Array of { field: string, aggregation: string }
   const [selectedRow, setSelectedRow] = useState("");
   const [selectedColumn, setSelectedColumn] = useState("");
   const [selectedValue, setSelectedValue] = useState("");
-  const [defaultAggregationType, setDefaultAggregationType] = useState("Sum");
+  const [defaultAggregationType, setDefaultAggregationType] = useState("Sum"); //Default aggregation type for the value field.
   const pivotTableRef = useRef(null);
 
   if (!fullData || fullData.length < 2) {
-    return <div>No data received or insufficient data</div>;
+    return <div>No data received or insufficient data</div>; //Checking if there is enough data to create Pivot table
   }
 
-  const [headers, ...rows] = fullData;
-  const structuredData = rows.map((row) =>
+  const [headers, ...rows] = fullData; //Getting the full-data from Excel or CSV file.
+  const structuredData = rows.map((row) => //Mapping accessing of values using column names instead of index.
     headers.reduce((acc, key, idx) => {
       acc[key] = row[idx];
       return acc;
     }, {})
   );
 
-  const addField = (setFieldFn, currentFields, field) => {
+  const addField = (setFieldFn, currentFields, field) => { //Adds a selected field to the appropriate state array (rowFields, columnFields, or valueFields).
     if (!field) return;
     if (setFieldFn === setValueFields) {
       if (!currentFields.some(item => item.field === field)) {
@@ -41,7 +41,7 @@ const GeneratingFields = () => {
     }
   };
 
-  const removeField = (fieldToRemove, setFieldFn, currentFields) => {
+  const removeField = (fieldToRemove, setFieldFn, currentFields) => { //Removes a field from Row, Column or Value.
     if (setFieldFn === setValueFields) {
       setFieldFn(currentFields.filter((item) => item.field !== fieldToRemove));
     } else {
@@ -52,7 +52,7 @@ const GeneratingFields = () => {
     else if (setFieldFn === setValueFields) setSelectedValue("");
   };
 
-  const renderFieldDropdown = (
+  const renderFieldDropdown = ( //This function is used reused to render the drop-down in Row, Column and value fields.
     label,
     options,
     selected,
@@ -132,7 +132,7 @@ const GeneratingFields = () => {
     </div>
   );
 
-  const aggregateData = (data, rowFields, columnFields, valueFields) => {
+  const aggregateData = (data, rowFields, columnFields, valueFields) => { //This function is used to aggregate data when an user selects row and value field without column field.
     const dataMap = {};
     const DUMMY_COL_KEY = '__#NO_COLUMN_VALUES#__';
 
@@ -158,7 +158,7 @@ const GeneratingFields = () => {
 
     const getAggregatedValue = (sum, count, numericCount, aggregation) => {
       if (aggregation === 'Average') {
-        return numericCount > 0 ? (sum / numericCount).toFixed(2) : '0.00';
+        return numericCount > 0 ? (sum / numericCount).toFixed(2) : '0.00'; //For calculating avaerage
       } else if (aggregation === 'Count') {
         return count; // Total items in group
       }
@@ -473,6 +473,7 @@ const GeneratingFields = () => {
     writeFile(wb, "pivot_table.xlsx");
   };
 
+  //Core logic for creating the Pivot table
   return (
     <div style={styles.container}>
       <div style={styles.pivotContainer}>
@@ -564,7 +565,7 @@ const GeneratingFields = () => {
                 </tbody>
               </table>
             )}
-            <button style={styles.downloadButton} onClick={downloadExcel}>
+            <button style={styles.downloadButton} onClick={downloadExcel}> 
               Download as Excel
             </button>
           </>
@@ -584,6 +585,7 @@ const GeneratingFields = () => {
   );
 };
 
+//Applying styles for my Pivot table
 const styles = {
   container: {
     display: "flex",
@@ -639,7 +641,7 @@ const styles = {
   selectedField: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: 'center', // Vertically center items
+    alignItems: 'center',
     backgroundColor: "White",
     padding: "4px 8px",
     borderRadius: "10px",

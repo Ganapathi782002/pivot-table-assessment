@@ -3,9 +3,11 @@ import { ToastContainer, toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
 import 'react-toastify/dist/ReactToastify.css';
 import { useNavigate } from 'react-router-dom';
+// eslint-disable-next-line no-unused-vars
 import GeneratingFields from './GeneratingFields';
 
 const UploadFile = () => {
+  // eslint-disable-next-line no-unused-vars
   const [file, setFile] = useState(null);
   const [previewData, setPreviewData] = useState([]);
   const [fullData, setFullData] = useState([]);
@@ -19,7 +21,7 @@ const UploadFile = () => {
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'text/csv',
-    ];
+    ]; //Validation of fiel formats.
   
     if (!validTypes.includes(selectedFile.type)) {
       toast.error('Invalid file format. Please upload an Excel or CSV file.');
